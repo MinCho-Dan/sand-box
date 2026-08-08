@@ -6,7 +6,7 @@
 
 브라우저에서 바로 돌아가는 탑다운 액션 게임입니다. PC와 모바일 모두 지원합니다.
 
-**▶ [지금 플레이하기](https://gyujik.github.io/sand-box/isekai-kimdaewon/)**
+**▶ [지금 플레이하기](https://mincho-dan.github.io/sand-box/isekai-kimdaewon/)**
 
 ## 조작
 
