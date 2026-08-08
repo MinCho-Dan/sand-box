@@ -104,7 +104,7 @@
   <hr>
   이동 <span class="k">WASD</span> / <span class="k">방향키</span><br>
   공격 <span class="k">J</span> 또는 <span class="k">Space</span><br>
-  회피 <span class="k">Shift</span><br>
+  회피 <span class="k">K</span> 또는 <span class="k">Shift</span><br>
   진행 <span class="k">Enter</span>
   <hr>
   허기가 0이 되면 체력이 깎인다.<br>
@@ -117,9 +117,11 @@
 "use strict";
 
 /* ─────────────────────────── 규격 ─────────────────────────── */
-const TS = 36, MW = 15, MH = 27;
-const W = MW * TS;   // 540
-const H = MH * TS;   // 972
+const TS = 36, MW = 15, MH = 24;
+const W  = MW * TS;      // 540 · 캔버스 = 아레나 가로
+const AH = MH * TS;      // 864 · 아레나 세로 (월드 좌표는 여기까지)
+const HUD_H = 108;       // 상단 정보바 전용 공간 — 맵과 겹치지 않는다
+const H  = AH + HUD_H;   // 972 · 캔버스 세로
 
 const cv = document.getElementById("cv");
 const ctx = cv.getContext("2d");
@@ -183,30 +185,40 @@ function angDiff(a, b) {
 
 /* ─────────────────────────── 데이터 ─────────────────────────── */
 const CHAPTERS = [
-  { name:"폐허의 마트",    theme:"mart",  kind:"scavenge", need:6,
+  { name:"폐허의 마트",     theme:"mart",  kind:"scavenge", need:6,
     flavor:"유통기한은 400년쯤 지났다. 그래도 먹는다." },
-  { name:"싱그러운 들판",  theme:"field", kind:"combat", spawn:{walker:5},
+  { name:"싱그러운 들판",   theme:"field", kind:"combat", spawn:{walker:5},
     flavor:"풀냄새가 난다. 진짜 풀이다." },
-  { name:"마수의 숲",      theme:"field", kind:"combat", spawn:{walker:4, spore:6},
+  { name:"마수의 숲",       theme:"field", kind:"combat", spawn:{walker:4, spore:6},
     flavor:"나무 사이에서 무언가 미끄러지는 소리." },
-  { name:"폐성의 회랑",    theme:"stone", kind:"combat", spawn:{walker:3, spore:5, watcher:2},
+  { name:"버려진 광산",     theme:"mine",  kind:"combat", spawn:{walker:3, charger:3},
+    flavor:"갱도 안쪽에서 발 구르는 소리가 울린다." },
+  { name:"폐성의 회랑",     theme:"stone", kind:"combat", spawn:{walker:3, spore:5, watcher:2},
     flavor:"무너진 성벽 너머에서 주문 소리가 들린다." },
-  { name:"마왕성",         theme:"dark",  kind:"boss",
+  { name:"얼어붙은 호수",   theme:"ice",   kind:"combat", spawn:{spore:6, splitter:3, charger:2},
+    flavor:"얼음 아래에서 무언가 갈라지고 있다." },
+  { name:"마왕성 앞마당",   theme:"dark",  kind:"combat", spawn:{walker:4, charger:3, watcher:2, splitter:2},
+    flavor:"문 앞을 지키는 것들이 전부 모여 있다." },
+  { name:"마왕성",          theme:"dark",  kind:"boss",
     flavor:"공기가 일그러진다. 마트에서 봤던 그 느낌." },
 ];
 
 const ENEMY_DEF = {
-  walker:  { name:"고블린",    hp:38,  spd:58,  r:15, dmg:13, color:"#8a9b4a", score:100,  gem:3 },
-  spore:   { name:"슬라임",    hp:16,  spd:118, r:10, dmg:7,  color:"#5fd2c0", score:60,   gem:1 },
-  watcher: { name:"흑마법사",  hp:52,  spd:42,  r:16, dmg:9,  color:"#5f7fd3", score:180,  gem:6, ranged:true },
-  boss:    { name:"마왕 현상", hp:560, spd:46,  r:34, dmg:18, color:"#b06cff", score:1500, gem:40, boss:true },
+  walker:   { name:"고블린",    hp:38,  spd:58,  r:15, dmg:13, color:"#8a9b4a", score:100,  gem:3 },
+  spore:    { name:"슬라임",    hp:16,  spd:118, r:10, dmg:7,  color:"#5fd2c0", score:60,   gem:1 },
+  watcher:  { name:"흑마법사",  hp:52,  spd:42,  r:16, dmg:9,  color:"#5f7fd3", score:180,  gem:6, ranged:true },
+  charger:  { name:"돌진병",    hp:46,  spd:60,  r:16, dmg:16, color:"#c46a4a", score:220,  gem:5, charge:true, rush:430 },
+  splitter: { name:"분열체",    hp:40,  spd:72,  r:17, dmg:11, color:"#7fd15f", score:150,  gem:4, split:2 },
+  boss:     { name:"마왕 현상", hp:560, spd:46,  r:34, dmg:18, color:"#b06cff", score:1500, gem:40, boss:true },
 };
 
 const CODEX = {
-  walker:  "곧장 달려든다. 붙기 전에 쳐내라.",
-  spore:   "빠르지만 약하다. 지그재그로 다가온다.",
-  watcher: "거리를 벌리며 3연발 탄막을 쏜다.\n탄막은 렌치로 쳐낼 수 있다.",
-  boss:    "탄막과 소환을 반복한다.\n체력 절반 아래에서 더 사나워진다.",
+  walker:   "곧장 달려든다. 붙기 전에 쳐내라.",
+  spore:    "빠르지만 약하다. 지그재그로 다가온다.",
+  watcher:  "거리를 벌리며 3연발 탄막을 쏜다.\n탄막은 렌치로 쳐낼 수 있다.",
+  charger:  "멈춰서 자세를 잡은 뒤 직선으로 돌진한다.\n조준선이 보이면 옆으로 피해라.",
+  splitter: "쓰러뜨리면 둘로 갈라진다.\n갈라진 것까지 정리해야 끝난다.",
+  boss:     "탄막과 소환을 반복한다.\n체력 절반 아래에서 더 사나워진다.",
 };
 
 const UPGRADES = [
@@ -217,7 +229,7 @@ const UPGRADES = [
   { id:"dash", name:"회피",        eff:"쿨다운 -0.1초 · 무적 +0.03초" },
 ];
 const UP_MAX = 4;
-const UP_COST = [10, 16, 24, 34];
+const UP_COST = [10, 18, 30, 46];   // 스테이지가 8개로 늘어 총 수급 약 180에 맞춘 값
 
 const STORY = [
 `단기 4361년.
@@ -281,7 +293,7 @@ const stat = {
 
 function makePlayer() {
   state.player = {
-    x: W / 2, y: H - 5 * TS, r: 12, face: -Math.PI / 2,
+    x: W / 2, y: AH - 5 * TS, r: 12, face: -Math.PI / 2,
     hp: stat.maxhp(), hunger: stat.maxfood(),
     atkCd: 0, swing: 0, dashCd: 0, dashT: 0, dvx: 0, dvy: 0,
     inv: 0, hurtT: 0, supplies: 0,
@@ -340,7 +352,7 @@ function nearestFree(g, tx, ty) {
       if (!g[y][x]) return { x: x * TS + TS / 2, y: y * TS + TS / 2 };
     }
   }
-  return { x: W / 2, y: H / 2 };
+  return { x: W / 2, y: AH / 2 };
 }
 
 function freeSpots(g, away, minD) {
@@ -412,7 +424,8 @@ function gotoCard() {
 
 function makeEnemy(type, x, y) {
   const d = ENEMY_DEF[type];
-  return { type, x, y, r:d.r, hp:d.hp, maxhp:d.hp, spd:d.spd, hit:0, cd:rnd(1,2.5), touch:0, phase:0, wob:rnd(0,6) };
+  return { type, x, y, r:d.r, hp:d.hp, maxhp:d.hp, spd:d.spd, hit:0, cd:rnd(1,2.5), touch:0, phase:0,
+           wob:rnd(0,6), mode:0, windT:0, rushT:0, aim:0 };
 }
 
 /* ─────────────────────────── 충돌 ─────────────────────────── */
@@ -483,7 +496,7 @@ function update(dt) {
   p.hurtT  = Math.max(0, p.hurtT - dt);
   state.runTime += dt;
 
-  if ((down("ShiftLeft","ShiftRight") || touch.dash) && p.dashCd <= 0 && p.dashT <= 0 && len > .15) {
+  if ((down("KeyK","ShiftLeft","ShiftRight") || touch.dash) && p.dashCd <= 0 && p.dashT <= 0 && len > .15) {
     p.dashT = .18; p.dashCd = stat.dashCd(); p.inv = Math.max(p.inv, stat.dashInv());
     const dn = Math.hypot(ix, iy) || 1;
     p.dvx = ix / dn * 520; p.dvy = iy / dn * 520;
@@ -603,6 +616,25 @@ function update(dt) {
           state.bullets.push({ x:e.x, y:e.y, vx:Math.cos(a)*170, vy:Math.sin(a)*170, r:5, dmg:d.dmg, life:4 });
         }
       }
+    } else if (d.charge) {
+      // 0: 접근 → 1: 조준선 노출(예고) → 2: 직선 돌진
+      e.cd = Math.max(0, e.cd - dt);
+      if (e.mode === 2) {
+        e.rushT -= dt;
+        const bx = e.x, by = e.y;
+        moveEnt(e, Math.cos(e.aim) * d.rush * dt, Math.sin(e.aim) * d.rush * dt, g);
+        const hitWall = Math.hypot(e.x - bx, e.y - by) < d.rush * dt * 0.5;
+        if (e.rushT <= 0 || hitWall) {
+          e.mode = 0; e.cd = 1.3;
+          if (hitWall) { burst(e.x, e.y, 10, d.color, 160, .4); state.shake = Math.max(state.shake, 6); }
+        }
+      } else if (e.mode === 1) {
+        e.windT -= dt;                       // 예고 중에는 조준을 갱신하지 않는다 — 옆으로 피할 수 있게
+        if (e.windT <= 0) { e.mode = 2; e.rushT = .45; }
+      } else {
+        moveEnt(e, Math.cos(toP) * e.spd * dt, Math.sin(toP) * e.spd * dt, g);
+        if (dp < 250 && e.cd <= 0) { e.mode = 1; e.windT = .7; e.aim = toP; }
+      }
     } else {
       const a = toP + (e.type === "spore" ? Math.sin(e.wob * 6) * .5 : 0);
       moveEnt(e, Math.cos(a) * e.spd * dt, Math.sin(a) * e.spd * dt, g);
@@ -621,6 +653,13 @@ function update(dt) {
       burst(e.x, e.y, d.boss ? 60 : 16, d.color, d.boss ? 320 : 190, d.boss ? 1.1 : .5);
       state.shake = d.boss ? 24 : 5;
       state.items.push({ x:e.x, y:e.y, r:9, type:"gem", val:d.gem, t:0 });
+      if (d.split) {                       // 분열체 — 죽으면 둘로 갈라진다
+        for (let k = 0; k < d.split; k++) {
+          const a = rnd(0, Math.PI * 2);
+          state.enemies.push(makeEnemy("spore", e.x + Math.cos(a) * 26, e.y + Math.sin(a) * 26));
+        }
+        popText(e.x, e.y - 24, "분열!", "#9ef07a", 14, .8);
+      }
       if (!d.boss) {
         const roll = Math.random();
         if (roll < .20)      state.items.push({ x:e.x + 14, y:e.y, r:10, type:"food", t:0 });
@@ -742,8 +781,11 @@ function shopButtons() {
 
 function sceneButtons() {
   if (state.scene === "shop") return shopButtons();
-  if (state.scene === "dead" || state.scene === "ending")
-    return [{ id:"restart", kind:"restart", x:W/2 - 110, y:H/2 + 150, w:220, h:60 }];
+  // 엔딩은 본문이 아래까지 내려오므로 버튼을 더 낮게 둔다 (텍스트와 겹치지 않도록)
+  if (state.scene === "ending")
+    return [{ id:"restart", kind:"restart", x:W/2 - 110, y:H - 118, w:220, h:60 }];
+  if (state.scene === "dead")
+    return [{ id:"restart", kind:"restart", x:W/2 - 110, y:H/2 + 96, w:220, h:60 }];
   return [];
 }
 
@@ -892,6 +934,8 @@ const THEMES = {
   mart:  { f1:COL.floor, f2:COL.floor2, w:COL.wall, wt:COL.wallTop, deco:null },
   field: { f1:"#1c3520", f2:"#172d1c", w:"#6b5a3a", wt:"#8f7748", deco:"grass" },
   stone: { f1:"#2b2a26", f2:"#242320", w:"#4a4740", wt:"#5f5b51", deco:"crack" },
+  mine:  { f1:"#241d18", f2:"#1d1713", w:"#4a3a2a", wt:"#66513a", deco:"crack" },
+  ice:   { f1:"#1b2c38", f2:"#16242e", w:"#3f5a6b", wt:"#5b8098", deco:"ice" },
   dark:  { f1:"#120f1a", f2:"#0e0c15", w:"#241d33", wt:"#33294a", deco:null },
 };
 
@@ -909,6 +953,8 @@ function draw() {
   if (sc === "shop")       { drawShop();   ctx.restore(); return; }
   if (sc === "ending")     { drawEnding(); ctx.restore(); drawButtons(); return; }
 
+  // 아레나는 HUD 아래 전용 공간에 그린다. 월드 좌표 (0,0)~(W,AH) 가 여기로 옮겨진다.
+  ctx.translate(0, HUD_H);
   if (state.shake > 0) ctx.translate(rnd(-state.shake, state.shake) * .4, rnd(-state.shake, state.shake) * .4);
   drawMap();
   drawItems();
@@ -942,6 +988,10 @@ function drawMap() {
       } else if (th.deco === "crack" && ((x * 5 + y * 9) % 7 === 0)) {
         ctx.fillStyle = "rgba(0,0,0,.22)";
         ctx.fillRect(px + ((x * 13) % 20) + 4, py + ((y * 7) % 20) + 6, 11, 2);
+      } else if (th.deco === "ice" && ((x * 3 + y * 11) % 6 === 0)) {
+        ctx.fillStyle = "rgba(200,235,255,.10)";
+        const ix2 = px + ((x * 7 + y * 5) % 22) + 7, iy2 = py + ((x * 5 + y * 13) % 22) + 7;
+        ctx.fillRect(ix2 - 5, iy2, 10, 1); ctx.fillRect(ix2, iy2 - 5, 1, 10);
       }
     }
   }
@@ -1020,7 +1070,34 @@ function drawPortal() {
 function drawEnemies() {
   for (const e of state.enemies) {
     const d = ENEMY_DEF[e.type];
+
+    // 돌진 예고선 — 이걸 보고 옆으로 피하는 게 공략법이다
+    if (d.charge && e.mode === 1) {
+      const prog = 1 - e.windT / .7;
+      ctx.save();
+      ctx.globalAlpha = .25 + prog * .5;
+      ctx.strokeStyle = "#ff7a4a"; ctx.lineWidth = 2 + prog * 3;
+      ctx.setLineDash([9, 7]);
+      ctx.beginPath(); ctx.moveTo(e.x, e.y);
+      ctx.lineTo(e.x + Math.cos(e.aim) * 300, e.y + Math.sin(e.aim) * 300);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+    if (d.charge && e.mode === 2) {
+      ctx.globalAlpha = .3; ctx.fillStyle = d.color;
+      ctx.beginPath(); ctx.arc(e.x - Math.cos(e.aim) * 16, e.y - Math.sin(e.aim) * 16, e.r, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
     ctx.save(); ctx.translate(e.x, e.y);
+    if (d.charge && e.mode === 1) {
+      const f = 1 - e.windT / .7;
+      ctx.globalAlpha = .35 + Math.sin(f * 30) * .2;
+      ctx.fillStyle = "#ff7a4a";
+      ctx.beginPath(); ctx.arc(0, 0, e.r + 7, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     if (d.boss) {
       ctx.globalAlpha = .18; ctx.fillStyle = COL.rift;
       ctx.beginPath(); ctx.arc(0, 0, e.r + 22 + Math.sin(e.wob * 2) * 6, 0, 7); ctx.fill();
@@ -1110,25 +1187,28 @@ function bar(x, y, w, h, ratio, fill) {
 
 function drawHUD() {
   const p = state.player, ch = CHAPTERS[state.chapterIdx];
-  ctx.fillStyle = "rgba(6,10,9,.78)"; ctx.fillRect(0, 0, W, 58);
-  ctx.fillStyle = "rgba(6,10,9,.55)"; ctx.fillRect(0, 58, W, 22);
+  const hpR = p.hp / stat.maxhp(), fdR = p.hunger / stat.maxfood();
 
-  ctx.textAlign = "left"; ctx.font = "10px sans-serif"; ctx.fillStyle = COL.dim;
-  ctx.fillText("체력", 12, 18);
-  bar(42, 9, 180, 10, p.hp / stat.maxhp(), p.hp / stat.maxhp() < .3 ? "#ff5c5c" : "#4fd18b");
-  ctx.fillStyle = COL.dim; ctx.fillText("허기", 12, 40);
-  bar(42, 31, 180, 10, p.hunger / stat.maxfood(), p.hunger / stat.maxfood() < .25 ? "#ff8a3d" : "#ffd166");
+  ctx.fillStyle = "#0a100e"; ctx.fillRect(0, 0, W, HUD_H);
+  ctx.fillStyle = "rgba(143,227,192,.14)"; ctx.fillRect(0, HUD_H - 2, W, 2);
+
+  ctx.textAlign = "left"; ctx.font = "11px sans-serif";
+  ctx.fillStyle = COL.dim; ctx.fillText("체력", 16, 27);
+  bar(56, 17, 186, 13, hpR, hpR < .3 ? "#ff5c5c" : "#4fd18b");
+  ctx.fillStyle = COL.dim; ctx.fillText("허기", 16, 52);
+  bar(56, 42, 186, 13, fdR, fdR < .25 ? "#ff8a3d" : "#ffd166");
 
   ctx.textAlign = "right";
-  ctx.fillStyle = COL.gem; ctx.font = "bold 15px sans-serif";
-  ctx.fillText("◆ " + state.gems, W - 12, 22);
-  ctx.fillStyle = COL.text; ctx.font = "bold 13px sans-serif";
-  ctx.fillText(String(state.score).padStart(6, "0"), W - 12, 44);
+  ctx.fillStyle = COL.gem; ctx.font = "bold 19px sans-serif";
+  ctx.fillText("◆ " + state.gems, W - 16, 32);
+  ctx.fillStyle = COL.text; ctx.font = "bold 14px sans-serif";
+  ctx.fillText(String(state.score).padStart(6, "0"), W - 16, 55);
 
-  ctx.textAlign = "left"; ctx.font = "11px sans-serif"; ctx.fillStyle = COL.text;
-  ctx.fillText(`STAGE ${state.chapterIdx + 1} · ${ch.name}`, 12, 73);
-  ctx.textAlign = "right"; ctx.fillStyle = COL.dim;
-  ctx.fillText(ch.kind === "scavenge" ? `보급품 ${p.supplies} / ${ch.need}` : `남은 적 ${state.enemies.length}`, W - 12, 73);
+  ctx.fillStyle = "rgba(255,255,255,.05)"; ctx.fillRect(16, 68, W - 32, 26);
+  ctx.textAlign = "left"; ctx.font = "bold 12px sans-serif"; ctx.fillStyle = COL.text;
+  ctx.fillText(`STAGE ${state.chapterIdx + 1} · ${ch.name}`, 26, 86);
+  ctx.textAlign = "right"; ctx.font = "12px sans-serif"; ctx.fillStyle = COL.dim;
+  ctx.fillText(ch.kind === "scavenge" ? `보급품 ${p.supplies} / ${ch.need}` : `남은 적 ${state.enemies.length}`, W - 26, 86);
 }
 
 function drawOverlays() {
@@ -1137,8 +1217,8 @@ function drawOverlays() {
     ctx.fillStyle = "rgba(6,10,9,.82)";
     ctx.textAlign = "center"; ctx.font = "bold 15px sans-serif";
     const w = ctx.measureText(state.toast).width + 36;
-    ctx.fillRect(W / 2 - w / 2, 94, w, 32);
-    ctx.fillStyle = COL.text; ctx.fillText(state.toast, W / 2, 115);
+    ctx.fillRect(W / 2 - w / 2, HUD_H + 14, w, 32);
+    ctx.fillStyle = COL.text; ctx.fillText(state.toast, W / 2, HUD_H + 35);
     ctx.globalAlpha = 1;
   }
   if (state.flash > 0) { ctx.fillStyle = `rgba(255,120,120,${state.flash * .22})`; ctx.fillRect(0, 0, W, H); }
@@ -1250,7 +1330,7 @@ function drawTitle() {
     ctx.fillText("오른쪽 [공격] [회피] 버튼", W / 2, 634);
   } else {
     ctx.fillText("이동 WASD·방향키    공격 J·Space", W / 2, 610);
-    ctx.fillText("회피 Shift", W / 2, 634);
+    ctx.fillText("회피 K·Shift", W / 2, 634);
   }
   ctx.fillText("허기가 0이 되면 체력이 깎인다.", W / 2, 672);
 
