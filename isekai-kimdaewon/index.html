@@ -485,11 +485,12 @@ const CODEX = {
    전동공구가 없어도 배터리는 계속 쌓이므로, 공구를 주우면 바로 쓸 수 있다. */
 const BATT_MAX = 100;
 const WEAPONS = {
-  wrench:  { name:"파이프 렌치",  dmg:16, reach:50, arc:1.00, cd:.38, drain:0, color:"#9fb0a8" },
-  driver:  { name:"전동드라이버", dmg:26, reach:54, arc:.85,  cd:.30, drain:3, color:"#f0c04a" },
-  saw:     { name:"전기톱",       dmg:34, reach:74, arc:.70,  cd:.26, drain:6, color:"#e2662f" },
-  hammer:  { name:"해머드릴",     dmg:42, reach:52, arc:.75,  cd:.40, drain:6, color:"#4aa3f0" },
-  grinder: { name:"그라인더",     dmg:38, reach:38, arc:1.15, cd:.28, drain:2, color:"#c65ad0" },
+  // drain 은 스윙 1회당 배터리 소모. BATT_MAX 100 기준 괄호 안이 최대 스윙 수.
+  wrench:  { name:"파이프 렌치",  dmg:16, reach:50, arc:1.00, cd:.38, drain:0,  color:"#9fb0a8" },
+  driver:  { name:"전동드라이버", dmg:26, reach:54, arc:.85,  cd:.30, drain:5,  color:"#f0c04a" }, // 20회
+  saw:     { name:"전기톱",       dmg:34, reach:74, arc:.70,  cd:.26, drain:11, color:"#e2662f" }, //  9회
+  hammer:  { name:"해머드릴",     dmg:42, reach:52, arc:.75,  cd:.40, drain:10, color:"#4aa3f0" }, // 10회
+  grinder: { name:"그라인더",     dmg:38, reach:38, arc:1.15, cd:.28, drain:4,  color:"#c65ad0" }, // 25회
 };
 const TOOL_IDS = ["driver", "saw", "hammer", "grinder"];
 const curWeapon = () => WEAPONS[state.tool || "wrench"];
@@ -872,7 +873,7 @@ function update(dt) {
         sfx("batt");
       } else if (it.type === "tool") {
         state.tool = it.tool;
-        if (state.battery <= 0) state.battery = clamp(34, 0, BATT_MAX);   // 최소 사용분은 딸려온다
+        if (state.battery <= 0) state.battery = clamp(40, 0, BATT_MAX);   // 최소 사용분은 딸려온다
         toast(WEAPONS[it.tool].name + " 획득");
         popText(it.x, it.y, WEAPONS[it.tool].name, WEAPONS[it.tool].color, 14, 1.1);
         sfx("tool");
