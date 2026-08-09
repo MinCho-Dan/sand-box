@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#07090a">
+<title>sand-box</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 48px 20px;
+    background: #07090a; color: #cfe8dd;
+    font-family: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", system-ui, sans-serif;
+    line-height: 1.7;
+    display: flex; justify-content: center;
+  }
+  main { width: 100%; max-width: 640px; }
+  h1 { color: #8fe3c0; font-size: 26px; margin: 0 0 6px; letter-spacing: .5px; }
+  .lead { color: #5d7a70; font-size: 14px; margin: 0 0 36px; }
+  a.card {
+    display: block; text-decoration: none; color: inherit;
+    border: 1px solid #1d2f29; border-radius: 10px;
+    padding: 20px 22px; margin-bottom: 16px;
+    background: #0b110f;
+    transition: border-color .15s, transform .15s;
+  }
+  a.card:hover { border-color: #8fe3c0; transform: translateY(-2px); }
+  a.card h2 { margin: 0 0 6px; font-size: 18px; color: #8fe3c0; }
+  a.card p { margin: 0; color: #7c9a90; font-size: 14px; }
+  a.card .tags { margin-top: 12px; }
+  .tag {
+    display: inline-block; font-size: 11px; color: #5d7a70;
+    border: 1px solid #23372f; border-radius: 999px;
+    padding: 2px 10px; margin-right: 6px;
+  }
+  footer { margin-top: 40px; color: #3f5a51; font-size: 13px; }
+  footer a { color: #5d7a70; }
+</style>
+</head>
+<body>
+<main>
+  <h1>sand-box</h1>
+  <p class="lead">이것저것 만들어보는 공간입니다. 전부 브라우저에서 바로 돌아갑니다.</p>
+
+  <a class="card" href="./isekai-kimdaewon/">
+    <h2>이세계전사 김대원</h2>
+    <p>핵전쟁 후 마지막 생존자가 동그란 유리창에 손을 대면서 시작되는 세로형 액션 게임.
+       전동공구와 배터리, 상점 업그레이드, 전역 랭킹.</p>
+    <div class="tags">
+      <span class="tag">Canvas 2D</span>
+      <span class="tag">TypeScript</span>
+      <span class="tag">모바일 지원</span>
+    </div>
+  </a>
+
+  <footer>
+    <a href="https://github.com/MinCho-Dan/sand-box">GitHub 저장소</a>
+  </footer>
+</main>
+</body>
+</html>
