@@ -195,8 +195,8 @@ const COL = {
      anon 키는 방문자 브라우저에 어차피 노출되는 공개 키이며,
      실제 보호는 아래 SQL 의 RLS 정책과 CHECK 제약이 담당한다.
    ══════════════════════════════════════════════════════════════ */
-const SUPABASE_URL      = "";
-const SUPABASE_ANON_KEY = "";
+const SUPABASE_URL      = "https://nfrdrhwwqjxfqkhztmds.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_LUDTmMxJt6EW42zRjdKSog_c4Vo6koI";
 
 const rankOn = () => !!(SUPABASE_URL && SUPABASE_ANON_KEY && typeof fetch === "function");
 const RANK_LIMIT = 20;
