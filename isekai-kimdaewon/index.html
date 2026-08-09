@@ -1044,12 +1044,19 @@ function setupInput() {
   const knob  = stick.querySelector(".knob");
   let stickId = null, ox = 0, oy = 0, radius = 54;
 
-  const enableTouchUI = () => {
-    if (touch.on) return;
-    touch.on = true;
-    document.body.classList.add("touch");
+  /* 터치 UI 는 "마지막으로 쓴 입력 장치"를 따라간다.
+     한 번 켜두고 끝내면 터치 지원 PC 에서 화면 버튼이 계속 남는다. */
+  const setInputMode = isTouch => {
+    if (touch.on === isTouch) return;
+    touch.on = isTouch;
+    document.body.classList.toggle("touch", isTouch);
+    if (!isTouch) { touch.dash = false; if (endStick) endStick(); }
   };
+  const enableTouchUI = () => setInputMode(true);
   if (matchMedia("(pointer: coarse) and (hover: none)").matches) enableTouchUI();
+
+  // 키보드를 쓰면 PC 모드로 되돌린다 (닉네임 입력창의 키 입력은 전파되지 않음)
+  addEventListener("keydown", () => setInputMode(false));
 
   const place = (dx, dy) => {
     base.style.left = ox + "px"; base.style.top = oy + "px";
@@ -1067,7 +1074,7 @@ function setupInput() {
   };
 
   wrap.addEventListener("pointerdown", e => {
-    if (e.pointerType !== "mouse") enableTouchUI();
+    setInputMode(e.pointerType !== "mouse");
     wakeAudio();               // 모바일은 사용자 제스처가 있어야 오디오가 열린다
     e.preventDefault();
 
@@ -1110,7 +1117,8 @@ function setupInput() {
   const bindBtn = (el, onDown, onUp) => {
     el.addEventListener("pointerdown", e => {
       e.preventDefault(); e.stopPropagation();
-      enableTouchUI();
+      setInputMode(e.pointerType !== "mouse");
+      wakeAudio();
       if (state.scene !== "play") return;
       el.classList.add("press");
       onDown();
