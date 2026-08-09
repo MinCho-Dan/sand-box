@@ -256,21 +256,31 @@ let best = loadBest();
    에셋 파일 없이 Web Audio 로 즉석 합성한다. 파일 0개, 의존성 0개.
    모바일은 첫 사용자 제스처 전에는 오디오가 울리지 않으므로
    포인터 입력에서 resume() 을 호출해 깨운다. */
-const MUTE_KEY = "kimdaewon.mute";
-let actx = null;
-let muted = (() => { try { return localStorage.getItem(MUTE_KEY) === "1"; } catch (_) { return false; } })();
+const AUDIO_KEY = "kimdaewon.audio";
+/* 0 = 음악+효과음, 1 = 효과음만, 2 = 음소거 */
+let audioMode = (() => {
+  try { const v = +localStorage.getItem(AUDIO_KEY); return (v === 1 || v === 2) ? v : 0; }
+  catch (_) { return 0; }
+})();
+const AUDIO_LABEL = ["소리 켜짐", "효과음만", "소리 꺼짐"];
+const sfxOn = () => audioMode !== 2;
+const bgmOn = () => audioMode === 0;
+
+let actx = null, bgmGain = null;
 
 function audioCtx() {
-  if (muted) return null;
+  if (audioMode === 2) return null;
   if (!actx) {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     try { actx = new AC(); } catch (_) { return null; }
+    try { bgmGain = actx.createGain(); bgmGain.gain.value = 1; bgmGain.connect(actx.destination); }
+    catch (_) { bgmGain = null; }
   }
   if (actx.state === "suspended") { try { actx.resume(); } catch (_) {} }
   return actx;
 }
-function wakeAudio() { if (!muted) audioCtx(); }
+function wakeAudio() { audioCtx(); }
 
 function tone(o) {
   const ac = audioCtx(); if (!ac) return;
@@ -312,16 +322,78 @@ const SFX = {
   clear:  () => [523,659,784,1047].forEach((f,i) => tone({ freq:f, dur:.17, vol:.12, type:"triangle", delay:i*.09 })),
   buy:    () => { tone({ freq:700, dur:.06, vol:.12 }); tone({ freq:1050, dur:.09, vol:.11, delay:.05 }); },
   ui:     () => tone({ freq:520, dur:.05, vol:.09 }),
+  tool:   () => { noise({ dur:.11, vol:.10, filt:3400 }); tone({ freq:820, freq2:1150, dur:.08, vol:.07, type:"sawtooth" }); },
+  batt:   () => { tone({ freq:880, dur:.06, vol:.11, type:"square" }); tone({ freq:1320, dur:.08, vol:.10, type:"square", delay:.05 }); },
+  empty:  () => { tone({ freq:420, freq2:110, dur:.35, vol:.15, type:"sawtooth" }); noise({ dur:.2, vol:.08, filt:700 }); },
   charge: () => tone({ freq:120, freq2:420, type:"sawtooth", dur:.55, vol:.09 }),
   boss:   () => { [880,740,590,440,300].forEach((f,i) => tone({ freq:f, dur:.3, vol:.15, delay:i*.13 })); noise({ dur:.9, vol:.14, filt:600 }); },
   over:   () => tone({ freq:300, freq2:70, type:"sawtooth", dur:.9, vol:.18 }),
 };
-function sfx(k) { if (muted) return; const f = SFX[k]; if (f) { try { f(); } catch (_) {} } }
+function sfx(k) { if (!sfxOn()) return; const f = SFX[k]; if (f) { try { f(); } catch (_) {} } }
 
-function toggleMute() {
-  muted = !muted;
-  try { localStorage.setItem(MUTE_KEY, muted ? "1" : "0"); } catch (_) {}
-  if (!muted) sfx("ui");
+function cycleAudio() {
+  audioMode = (audioMode + 1) % 3;
+  try { localStorage.setItem(AUDIO_KEY, String(audioMode)); } catch (_) {}
+  if (!bgmOn()) bgm.step = 0;
+  if (sfxOn()) sfx("ui");
+}
+
+/* ── 배경음악 ──────────────────────────────────────────────
+   16스텝 시퀀서. 오디오 파일 없이 베이스 + 리드 두 성부를 즉석 합성한다.
+   메인 루프에서 호출되므로 탭이 백그라운드로 가면 자연히 멈춘다. */
+const bgm = { next: 0, step: 0, mood: "" };
+const NOTE = n => 440 * Math.pow(2, (n - 69) / 12);   // MIDI -> Hz
+const ROOT = 57;                                      // A3
+
+const BGM_PATTERNS = {
+  menu: { bpm: 76, bassVol: .050, leadVol: .030, lead: "triangle",
+    bass: [0,null,null,null, null,null,null,null, -4,null,null,null, null,null,null,null],
+    mel:  [12,null,15,null, 19,null,15,null, 17,null,20,null, 15,null,12,null] },
+  play: { bpm: 138, bassVol: .055, leadVol: .032, lead: "square",
+    bass: [0,null,0,null, -4,null,-4,null, -7,null,-7,null, -2,null,-2,null],
+    mel:  [12,15,19,15, 8,12,15,12, 5,8,12,8, 10,14,17,14] },
+  boss: { bpm: 158, bassVol: .060, leadVol: .034, lead: "sawtooth",
+    bass: [0,0,0,0, -1,-1,-1,-1, 0,0,0,0, -3,-3,-3,-3],
+    mel:  [12,13,12,11, 12,15,12,18, 12,13,12,11, 15,18,22,18] },
+};
+
+function bgmNote(semi, dur, vol, type, at) {
+  const ac = actx; if (!ac || !bgmGain) return;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(NOTE(semi), at);
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.linearRampToValueAtTime(vol, at + .015);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  o.connect(g); g.connect(bgmGain);
+  o.start(at); o.stop(at + dur + .02);
+}
+
+function currentMood() {
+  const sc = state.scene;
+  if (sc === "play" || sc === "bossdown")
+    return CHAPTERS[state.chapterIdx] && CHAPTERS[state.chapterIdx].kind === "boss" ? "boss" : "play";
+  return "menu";
+}
+
+function bgmTick() {
+  if (!bgmOn()) return;
+  const ac = audioCtx(); if (!ac || ac.state !== "running") return;
+
+  const mood = currentMood();
+  if (mood !== bgm.mood) { bgm.mood = mood; bgm.step = 0; bgm.next = ac.currentTime + .05; }
+  if (bgm.next < ac.currentTime) bgm.next = ac.currentTime + .05;
+
+  const p = BGM_PATTERNS[mood];
+  const spb = 30 / p.bpm;                       // 8분음표 길이
+  while (bgm.next < ac.currentTime + .25) {
+    const s = bgm.step % 16;
+    const b = p.bass[s], m = p.mel[s];
+    if (b !== null && b !== undefined) bgmNote(ROOT + b - 12, spb * .95, p.bassVol, "triangle", bgm.next);
+    if (m !== null && m !== undefined) bgmNote(ROOT + m, spb * .65, p.leadVol, p.lead, bgm.next);
+    bgm.next += spb;
+    bgm.step++;
+  }
 }
 
 /* ─────────────────────────── 입력 ─────────────────────────── */
@@ -346,7 +418,7 @@ addEventListener("keydown", e => {
       else if (state.scene === "dead" || state.scene === "ending") { if (state.sceneLock <= 0) enterEdge = true; }
     }
     if (e.code === "KeyJ" || e.code === "Space") { if (state.scene === "play") attackEdge = true; }
-    if (e.code === "KeyM") toggleMute();
+    if (e.code === "KeyM") cycleAudio();
   }
   keys[e.code] = true;
 });
@@ -407,6 +479,21 @@ const CODEX = {
   boss:     "탄막과 소환을 반복한다.\n체력 절반 아래에서 더 사나워진다.",
 };
 
+/* ── 무기 ──────────────────────────────────────────────────────
+   렌치는 기본 무기라 배터리를 쓰지 않는다.
+   전동공구는 공용 배터리를 휘두를 때마다 소모하고, 방전되면 렌치로 자동 복귀한다.
+   전동공구가 없어도 배터리는 계속 쌓이므로, 공구를 주우면 바로 쓸 수 있다. */
+const BATT_MAX = 100;
+const WEAPONS = {
+  wrench:  { name:"파이프 렌치",  dmg:16, reach:50, arc:1.00, cd:.38, drain:0, color:"#9fb0a8" },
+  driver:  { name:"전동드라이버", dmg:26, reach:54, arc:.85,  cd:.30, drain:3, color:"#f0c04a" },
+  saw:     { name:"전기톱",       dmg:34, reach:74, arc:.70,  cd:.26, drain:6, color:"#e2662f" },
+  hammer:  { name:"해머드릴",     dmg:42, reach:52, arc:.75,  cd:.40, drain:6, color:"#4aa3f0" },
+  grinder: { name:"그라인더",     dmg:38, reach:38, arc:1.15, cd:.28, drain:2, color:"#c65ad0" },
+};
+const TOOL_IDS = ["driver", "saw", "hammer", "grinder"];
+const curWeapon = () => WEAPONS[state.tool || "wrench"];
+
 const UPGRADES = [
   { id:"hp",   name:"최대 체력",   eff:"+20" },
   { id:"food", name:"최대 허기",   eff:"+20 · 감소 -10%" },
@@ -456,6 +543,7 @@ function newGame() {
     chapterIdx: 0, pendingChapter: 0,
     kills: 0, score: 0, gems: 0,
     up: { hp:0, food:0, atk:0, spd:0, dash:0 },
+    tool: null, battery: 0,
     seen: new Set(),
     player: null,
     map: null, enemies: [], items: [], bullets: [], parts: [], portal: null,
@@ -472,10 +560,13 @@ const stat = {
   maxhp:   () => 100 + 20 * state.up.hp,
   maxfood: () => 100 + 20 * state.up.food,
   foodRate:() => 1.5 * (1 - 0.10 * state.up.food),
-  dmg:     () => 16 + 4 * state.up.atk,
-  atkCd:   () => 0.38 - 0.04 * state.up.spd,
+  dmg:     () => curWeapon().dmg + 4 * state.up.atk,
+  atkCd:   () => Math.max(.12, curWeapon().cd - 0.04 * state.up.spd),
+  reach:   () => curWeapon().reach,
+  arc:     () => curWeapon().arc,
   dashCd:  () => 0.85 - 0.10 * state.up.dash,
   dashInv: () => 0.22 + 0.03 * state.up.dash,
+  dashFood:() => Math.max(1.5, 4 - 0.5 * state.up.dash),   // 회피는 허기를 소모한다
 };
 
 function makePlayer() {
@@ -588,6 +679,12 @@ function beginChapter() {
       for (let k = 0; k < n; k++) { const t = take(); state.enemies.push(makeEnemy(type, t.x, t.y)); }
     }
   }
+
+  // 광산에서 첫 전동공구를 확정 지급한다 (이후로는 적이 확률로 떨어뜨린다)
+  if (i === 3 && !state.tool) {
+    const t = take();
+    state.items.push({ x:t.x, y:t.y, r:12, type:"tool", tool:"driver", t:0 });
+  }
   setScene("play", 0.2);
 }
 
@@ -688,6 +785,7 @@ function update(dt) {
     const dn = Math.hypot(ix, iy) || 1;
     p.dvx = ix / dn * 520; p.dvy = iy / dn * 520;
     burst(p.x, p.y, 8, COL.heroDk, 90, .3);
+    p.hunger = Math.max(0, p.hunger - stat.dashFood());   // 회피 남발에 대가를 매긴다
     sfx("dash");
   }
 
@@ -695,10 +793,22 @@ function update(dt) {
   else moveEnt(p, ix * 178 * dt, iy * 178 * dt, g);
 
   /* 공격 — 사거리 안에 적이 있으면 그쪽으로 자동 조준 */
-  const REACH = 50;
+  const REACH = stat.reach(), ARC = stat.arc();
   if (attackEdge && p.atkCd <= 0) {
+    const wp = curWeapon();
     p.atkCd = stat.atkCd(); p.swing = .18;
-    sfx("swing");
+    sfx(state.tool ? "tool" : "swing");
+
+    if (wp.drain > 0) {
+      state.battery = Math.max(0, state.battery - wp.drain);
+      if (state.battery <= 0) {                 // 방전 — 렌치로 자동 복귀
+        state.tool = null;
+        toast("배터리 방전 — 파이프 렌치");
+        popText(p.x, p.y - 30, "방전", "#ff8a3d", 15, 1);
+        sfx("empty");
+      }
+    }
+
     let aim = p.face, bestD = 1e9;
     for (const e of state.enemies) {
       const d = dist(p, e);
@@ -708,11 +818,11 @@ function update(dt) {
     const dmg = stat.dmg();
     for (const e of state.enemies) {
       const d = dist(p, e);
-      if (d < REACH + e.r && Math.abs(angDiff(Math.atan2(e.y - p.y, e.x - p.x), aim)) < 1.0) damageEnemy(e, dmg, aim);
+      if (d < REACH + e.r && Math.abs(angDiff(Math.atan2(e.y - p.y, e.x - p.x), aim)) < ARC) damageEnemy(e, dmg, aim);
     }
     for (let i = state.bullets.length - 1; i >= 0; i--) {
       const b = state.bullets[i];
-      if (dist(p, b) < REACH + 4 && Math.abs(angDiff(Math.atan2(b.y - p.y, b.x - p.x), aim)) < 1.0) {
+      if (dist(p, b) < REACH + 4 && Math.abs(angDiff(Math.atan2(b.y - p.y, b.x - p.x), aim)) < ARC) {
         burst(b.x, b.y, 5, "#fff", 120, .25);
         popText(b.x, b.y, "쳐냄", "#dff3ff", 11, .6);
         sfx("parry");
@@ -755,9 +865,21 @@ function update(dt) {
       } else if (it.type === "gem") {
         state.gems += it.val;
         popText(it.x, it.y, "+" + it.val, COL.gem, 13);
+      } else if (it.type === "batt") {
+        // 전동공구가 없어도 배터리는 쌓인다 — 나중에 공구를 주우면 바로 쓸 수 있다
+        state.battery = clamp(state.battery + it.val, 0, BATT_MAX);
+        popText(it.x, it.y, "배터리 +" + it.val, "#7fe0ff", 13);
+        sfx("batt");
+      } else if (it.type === "tool") {
+        state.tool = it.tool;
+        if (state.battery <= 0) state.battery = clamp(34, 0, BATT_MAX);   // 최소 사용분은 딸려온다
+        toast(WEAPONS[it.tool].name + " 획득");
+        popText(it.x, it.y, WEAPONS[it.tool].name, WEAPONS[it.tool].color, 14, 1.1);
+        sfx("tool");
       }
-      if (it.type !== "gem") { burst(it.x, it.y, 8, COL.food, 110, .35); sfx("food"); }
-      else sfx("gem");
+      if (it.type === "gem") sfx("gem");
+      else if (it.type === "batt" || it.type === "tool") burst(it.x, it.y, 10, "#7fe0ff", 130, .4);
+      else { burst(it.x, it.y, 8, COL.food, 110, .35); sfx("food"); }
     }
   }
 
@@ -854,8 +976,12 @@ function update(dt) {
       }
       if (!d.boss) {
         const roll = Math.random();
-        if (roll < .20)      state.items.push({ x:e.x + 14, y:e.y, r:10, type:"food", t:0 });
-        else if (roll < .32) state.items.push({ x:e.x + 14, y:e.y, r:10, type:"medkit", t:0 });
+        if (roll < .18)      state.items.push({ x:e.x + 14, y:e.y, r:10, type:"food", t:0 });
+        else if (roll < .28) state.items.push({ x:e.x + 14, y:e.y, r:10, type:"medkit", t:0 });
+        else if (roll < .50) state.items.push({ x:e.x + 14, y:e.y, r:10, type:"batt", val:22, t:0 });
+        else if (roll < .55 && state.chapterIdx >= 3)
+          state.items.push({ x:e.x + 14, y:e.y, r:12, type:"tool",
+                             tool:TOOL_IDS[Math.floor(Math.random() * TOOL_IDS.length)], t:0 });
       } else {
         state.flash = 1;
         setScene("bossdown", 99);          // 연출 동안 입력 차단
@@ -978,7 +1104,7 @@ function shopButtons() {
 function sceneButtons() {
   if (state.scene === "title") {
     const snd = { id:"sound", kind:"sound", y:858, w:160, h:46,
-                  label: muted ? "소리 꺼짐" : "소리 켜짐" };
+                  label: AUDIO_LABEL[audioMode] };
     if (!rankOn()) return [{ ...snd, x: W/2 - 80 }];
     return [{ id:"rank", kind:"rank", x:104, y:858, w:160, h:46, label:"랭킹" },
             { ...snd, x:276 }];
@@ -1013,7 +1139,7 @@ function pressButton(b) {
   } else if (b.kind === "close") {
     sfx("ui"); newGame(); setScene("title", 0.3);
   } else if (b.kind === "sound") {
-    toggleMute();
+    cycleAudio();
   }
 }
 
@@ -1288,6 +1414,15 @@ function drawItems() {
       ctx.closePath(); ctx.fill();
       ctx.fillStyle = "rgba(255,255,255,.5)";
       ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(3, -1); ctx.lineTo(0, 2); ctx.closePath(); ctx.fill();
+    } else if (it.type === "batt") {
+      ctx.fillStyle = "#7fe0ff"; ctx.fillRect(-6, -9, 12, 18);
+      ctx.fillStyle = "#2a4a58"; ctx.fillRect(-6, -9, 12, 4);
+      ctx.fillStyle = "#dff6ff"; ctx.fillRect(-2, -13, 4, 4);
+    } else if (it.type === "tool") {
+      const c = WEAPONS[it.tool].color;
+      ctx.fillStyle = c; ctx.fillRect(-9, -6, 14, 12);
+      ctx.fillStyle = "#2c3a38"; ctx.fillRect(5, -3, 9, 6);
+      ctx.fillStyle = "#dff6ff"; ctx.fillRect(-6, -3, 3, 6);
     } else if (it.type === "medkit") {
       ctx.fillStyle = "#f2f6f3"; ctx.fillRect(-8, -7, 16, 14);
       ctx.fillStyle = "#e05555"; ctx.fillRect(-2, -5, 4, 10); ctx.fillRect(-6, -2, 12, 4);
@@ -1298,7 +1433,9 @@ function drawItems() {
       ctx.fillStyle = "rgba(0,0,0,.3)";        ctx.fillRect(-7, -1, 14, 2);
     }
     ctx.restore();
-    ctx.fillStyle = it.type === "gem" ? "rgba(200,155,255,.13)" : "rgba(255,209,102,.10)";
+    ctx.fillStyle = it.type === "gem" ? "rgba(200,155,255,.13)"
+                  : (it.type === "batt" || it.type === "tool") ? "rgba(127,224,255,.13)"
+                  : "rgba(255,209,102,.10)";
     ctx.beginPath(); ctx.arc(it.x, it.y + bob, 15 + Math.sin(it.t * 3) * 2, 0, 7); ctx.fill();
   }
 }
@@ -1425,19 +1562,52 @@ function drawPlayer() {
   ctx.rotate(p.face);
   const sw = p.swing > 0 ? (1 - p.swing / .18) : 0;
   ctx.rotate(p.swing > 0 ? (-0.9 + sw * 1.8) : 0.25);
-  ctx.fillStyle = "#9fb0a8";
-  ctx.fillRect(10, -2, 22, 4); ctx.fillRect(30, -5, 6, 10);
+  drawWeapon(state.tool, p.swing > 0);
   ctx.restore();
 
   if (p.swing > 0) {
     const a = 1 - p.swing / .18;
     ctx.save();
     ctx.globalAlpha = .35 * (1 - a);
-    ctx.strokeStyle = "#eaffe0"; ctx.lineWidth = 7;
+    ctx.strokeStyle = state.tool ? curWeapon().color : "#eaffe0";
+    ctx.lineWidth = 7;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 42, p.face - 0.9 + a * 1.8 - .5, p.face - 0.9 + a * 1.8 + .5);
+    const arc = stat.arc();
+    ctx.arc(p.x, p.y, stat.reach() * .85, p.face - 0.9 + a * 1.8 - arc / 2, p.face - 0.9 + a * 1.8 + arc / 2);
     ctx.stroke();
     ctx.restore();
+  }
+}
+
+/* 각 무기의 실루엣. 원점은 손, +x 가 정면이다. */
+function drawWeapon(tool, active) {
+  const c = WEAPONS[tool || "wrench"].color;
+  if (!tool) {                                   // 파이프 렌치
+    ctx.fillStyle = c;
+    ctx.fillRect(10, -2, 22, 4); ctx.fillRect(30, -5, 6, 10);
+    return;
+  }
+  ctx.fillStyle = "#2a3330";                     // 공구 몸체(그립)
+  ctx.fillRect(8, -5, 14, 10);
+  ctx.fillStyle = c;
+  if (tool === "driver") {
+    ctx.fillRect(22, -3, 8, 6);
+    ctx.fillStyle = "#dfe9e5"; ctx.fillRect(30, -1.5, 12, 3);
+  } else if (tool === "saw") {                   // 긴 톱날 + 톱니
+    ctx.fillRect(22, -4, 10, 8);
+    ctx.fillStyle = "#dfe9e5"; ctx.fillRect(32, -2, 34, 4);
+    ctx.fillStyle = c;
+    for (let i = 0; i < 8; i++) ctx.fillRect(34 + i * 4, -5, 2, 3);
+  } else if (tool === "hammer") {                // 굵은 드릴 비트
+    ctx.fillRect(22, -6, 12, 12);
+    ctx.fillStyle = "#dfe9e5"; ctx.fillRect(34, -3, 16, 6);
+    ctx.fillStyle = c; ctx.fillRect(48, -2, 6, 4);
+  } else if (tool === "grinder") {               // 짧은 몸체 + 원형 디스크
+    ctx.fillRect(22, -4, 8, 8);
+    ctx.fillStyle = "#dfe9e5";
+    ctx.beginPath(); ctx.arc(34, 0, active ? 11 : 10, 0, 7); ctx.fill();
+    ctx.fillStyle = c;
+    ctx.beginPath(); ctx.arc(34, 0, 4, 0, 7); ctx.fill();
   }
 }
 
@@ -1472,16 +1642,24 @@ function drawHUD() {
   ctx.fillStyle = "rgba(143,227,192,.14)"; ctx.fillRect(0, HUD_H - 2, W, 2);
 
   ctx.textAlign = "left"; ctx.font = "11px sans-serif";
-  ctx.fillStyle = COL.dim; ctx.fillText("체력", 16, 27);
-  bar(56, 17, 186, 13, hpR, hpR < .3 ? "#ff5c5c" : "#4fd18b");
-  ctx.fillStyle = COL.dim; ctx.fillText("허기", 16, 52);
-  bar(56, 42, 186, 13, fdR, fdR < .25 ? "#ff8a3d" : "#ffd166");
+  ctx.fillStyle = COL.dim; ctx.fillText("체력", 16, 22);
+  bar(78, 12, 164, 12, hpR, hpR < .3 ? "#ff5c5c" : "#4fd18b");
+  ctx.fillStyle = COL.dim; ctx.fillText("허기", 16, 41);
+  bar(78, 31, 164, 12, fdR, fdR < .25 ? "#ff8a3d" : "#ffd166");
+
+  // 라벨은 현재 무기, 게이지는 배터리. 렌치일 땐 비축량을 흐리게 보여준다.
+  const wp = curWeapon(), on = !!state.tool;
+  ctx.fillStyle = on ? wp.color : COL.dim;
+  ctx.font = "10px sans-serif";
+  ctx.fillText(wp.name, 16, 60);
+  bar(78, 50, 164, 12, state.battery / BATT_MAX,
+      on ? (state.battery < 25 ? "#ff8a3d" : "#7fe0ff") : "rgba(127,224,255,.30)");
 
   ctx.textAlign = "right";
-  ctx.fillStyle = COL.gem; ctx.font = "bold 19px sans-serif";
-  ctx.fillText("◆ " + state.gems, W - 16, 32);
+  ctx.fillStyle = COL.gem; ctx.font = "bold 18px sans-serif";
+  ctx.fillText("◆ " + state.gems, W - 16, 28);
   ctx.fillStyle = COL.text; ctx.font = "bold 14px sans-serif";
-  ctx.fillText(String(state.score).padStart(6, "0"), W - 16, 55);
+  ctx.fillText(String(state.score).padStart(6, "0"), W - 16, 50);
 
   ctx.fillStyle = "rgba(255,255,255,.05)"; ctx.fillRect(16, 68, W - 32, 26);
   ctx.textAlign = "left"; ctx.font = "bold 12px sans-serif"; ctx.fillStyle = COL.text;
@@ -1831,6 +2009,7 @@ function loop(now) {
   last = now;
   handleEnter();
   update(state.scene === "bossdown" ? dt * 0.35 : dt);   // 격파 연출은 슬로모션
+  bgmTick();
   draw();
   document.body.classList.toggle("playing", state.scene === "play");
   const rf = document.getElementById("rankform");
