@@ -84,6 +84,39 @@
     position: fixed; right: 28px; top: 50%; transform: translateY(-50%);
     width: 250px; color: #4d6b61; font-size: 13px; line-height: 1.85;
   }
+  /* ── 랭킹 등록 폼 ── */
+  #rankform {
+    display: none;
+    position: fixed; inset: 0; z-index: 30;
+    background: rgba(4, 7, 6, .82);
+    align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  body.asknick #rankform { display: flex; }
+  #rankform .box {
+    width: 100%; max-width: 320px;
+    background: #0d1513; border: 1px solid #24443a; border-radius: 10px;
+    padding: 22px 20px; text-align: center;
+  }
+  #rankform h2 { color: #8fe3c0; font-size: 18px; margin: 0 0 4px; }
+  #rankform .sub { color: #5d7a70; font-size: 12px; margin-bottom: 16px; }
+  #rankform input {
+    width: 100%; padding: 12px 14px; margin-bottom: 14px;
+    background: #060b0a; border: 1px solid #2c5548; border-radius: 6px;
+    color: #cfe8dd; font-family: inherit; font-size: 16px; text-align: center;
+    -webkit-user-select: text; user-select: text;
+  }
+  #rankform input:focus { outline: none; border-color: #8fe3c0; }
+  #rankform .row { display: flex; gap: 10px; }
+  #rankform button {
+    flex: 1; padding: 12px; border-radius: 6px; cursor: pointer;
+    font-family: inherit; font-size: 14px; font-weight: bold;
+    border: 1px solid #2c5548; background: #101d1a; color: #7fbfa6;
+  }
+  #rankform button.go { background: rgba(143,227,192,.16); border-color: #8fe3c0; color: #8fe3c0; }
+  #rankform button[disabled] { opacity: .5; cursor: default; }
+  #rankform .msg { color: #ff8a8a; font-size: 12px; min-height: 16px; margin-top: 10px; }
+
   #side h1 { color: #8fe3c0; font-size: 17px; margin: 0 0 4px; letter-spacing: .5px; }
   #side .k { color: #cfe8dd; font-weight: bold; }
   #side hr { border: 0; border-top: 1px solid #1a2622; margin: 14px 0; }
@@ -98,6 +131,19 @@
     <div class="btn" id="btnAtk">공격</div>
   </div>
 </div>
+<div id="rankform">
+  <div class="box">
+    <h2>랭킹 등록</h2>
+    <div class="sub" id="rf-sub">점수를 남기시겠습니까?</div>
+    <input id="rf-nick" maxlength="12" placeholder="닉네임" autocomplete="off" spellcheck="false">
+    <div class="row">
+      <button id="rf-skip">건너뛰기</button>
+      <button id="rf-go" class="go">등록</button>
+    </div>
+    <div class="msg" id="rf-msg"></div>
+  </div>
+</div>
+
 <div id="side">
   <h1>이세계전사 김대원</h1>
   단기 4361년 · 인류의 마지막 생존자
@@ -105,7 +151,8 @@
   이동 <span class="k">WASD</span> / <span class="k">방향키</span><br>
   공격 <span class="k">J</span> 또는 <span class="k">Space</span><br>
   회피 <span class="k">K</span> 또는 <span class="k">Shift</span><br>
-  진행 <span class="k">Enter</span>
+  진행 <span class="k">Enter</span><br>
+  음소거 <span class="k">M</span>
   <hr>
   허기가 0이 되면 체력이 깎인다.<br>
   회피에는 무적 시간이 있다.<br>
@@ -135,10 +182,147 @@ const COL = {
   text: "#cfe8dd", dim: "#5d7a70",
 };
 
+/* ══════════════════════════════════════════════════════════════
+   랭킹 설정 — 아래 두 값을 채우면 전역 랭킹이 켜진다.
+   비워두면 게임은 그대로 동작하고 최고 점수만 브라우저에 저장된다.
+
+   Supabase 대시보드 → Project Settings → API 에서
+     Project URL      -> SUPABASE_URL
+     anon public key  -> SUPABASE_ANON_KEY
+
+   ※ anon(publishable) 키만 넣을 것.
+     service_role 키는 모든 권한을 우회하는 비밀키이므로 절대 넣지 말 것.
+     anon 키는 방문자 브라우저에 어차피 노출되는 공개 키이며,
+     실제 보호는 아래 SQL 의 RLS 정책과 CHECK 제약이 담당한다.
+   ══════════════════════════════════════════════════════════════ */
+const SUPABASE_URL      = "";
+const SUPABASE_ANON_KEY = "";
+
+const rankOn = () => !!(SUPABASE_URL && SUPABASE_ANON_KEY && typeof fetch === "function");
+const RANK_LIMIT = 20;
+let rankRows = null;      // null = 아직 안 불러옴
+let rankState = "idle";   // idle | loading | ok | error
+let rankMine = -1;        // 방금 등록한 내 순위 (0-based)
+
+const sbHeaders = () => ({
+  apikey: SUPABASE_ANON_KEY,
+  Authorization: "Bearer " + SUPABASE_ANON_KEY,
+  "Content-Type": "application/json",
+});
+
+async function fetchRanking() {
+  if (!rankOn()) return;
+  rankState = "loading";
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/scores`
+      + `?select=nick,score,stage,kills&order=score.desc&order=created_at.asc&limit=${RANK_LIMIT}`;
+    const r = await fetch(url, { headers: sbHeaders() });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    rankRows = await r.json();
+    rankState = "ok";
+  } catch (_) {
+    rankState = "error";
+    if (!rankRows) rankRows = [];
+  }
+}
+
+async function submitScore(nick) {
+  const body = {
+    nick,
+    score: Math.round(state.score),
+    stage: state.chapterIdx + 1,
+    kills: state.kills,
+    run_time: Math.round(state.runTime * 10) / 10,
+  };
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/scores`, {
+    method: "POST",
+    headers: { ...sbHeaders(), Prefer: "return=minimal" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(r.status === 401 || r.status === 403
+    ? "등록 권한이 없습니다 (RLS 정책 확인)"
+    : "등록 실패 (" + r.status + ")");
+  await fetchRanking();
+  rankMine = (rankRows || []).findIndex(x => x.nick === nick && x.score === body.score);
+}
+
+const NICK_KEY = "kimdaewon.nick";
 const BEST_KEY = "kimdaewon.best";
 const loadBest = () => { try { return +(localStorage.getItem(BEST_KEY) || 0) || 0; } catch (_) { return 0; } };
 const saveBest = v => { try { localStorage.setItem(BEST_KEY, String(v)); } catch (_) {} };
 let best = loadBest();
+
+/* ─────────────────────────── 소리 ───────────────────────────
+   에셋 파일 없이 Web Audio 로 즉석 합성한다. 파일 0개, 의존성 0개.
+   모바일은 첫 사용자 제스처 전에는 오디오가 울리지 않으므로
+   포인터 입력에서 resume() 을 호출해 깨운다. */
+const MUTE_KEY = "kimdaewon.mute";
+let actx = null;
+let muted = (() => { try { return localStorage.getItem(MUTE_KEY) === "1"; } catch (_) { return false; } })();
+
+function audioCtx() {
+  if (muted) return null;
+  if (!actx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    try { actx = new AC(); } catch (_) { return null; }
+  }
+  if (actx.state === "suspended") { try { actx.resume(); } catch (_) {} }
+  return actx;
+}
+function wakeAudio() { if (!muted) audioCtx(); }
+
+function tone(o) {
+  const ac = audioCtx(); if (!ac) return;
+  const t0 = ac.currentTime + (o.delay || 0), dur = o.dur || .12;
+  const osc = ac.createOscillator(), g = ac.createGain();
+  osc.type = o.type || "square";
+  osc.frequency.setValueAtTime(o.freq, t0);
+  if (o.freq2) osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.freq2), t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(o.vol || .15, t0 + .008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(g); g.connect(ac.destination);
+  osc.start(t0); osc.stop(t0 + dur + .02);
+}
+function noise(o) {
+  const ac = audioCtx(); if (!ac) return;
+  const t0 = ac.currentTime + (o.delay || 0), dur = o.dur || .15;
+  const n = Math.max(1, Math.floor(ac.sampleRate * dur));
+  const buf = ac.createBuffer(1, n, ac.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = o.filt || 1200;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(o.vol || .15, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(lp); lp.connect(g); g.connect(ac.destination);
+  src.start(t0); src.stop(t0 + dur);
+}
+
+const SFX = {
+  swing:  () => noise({ dur:.09, vol:.09, filt:2800 }),
+  hit:    () => tone({ freq:240, freq2:90, dur:.07, vol:.15 }),
+  kill:   () => { tone({ freq:180, freq2:50, dur:.16, vol:.15 }); noise({ dur:.14, vol:.11, filt:900 }); },
+  hurt:   () => tone({ freq:200, freq2:60, type:"sawtooth", dur:.26, vol:.20 }),
+  dash:   () => noise({ dur:.16, vol:.11, filt:1700 }),
+  parry:  () => { tone({ freq:1500, freq2:950, dur:.09, vol:.13 }); tone({ freq:2200, dur:.05, vol:.07, delay:.02 }); },
+  food:   () => { tone({ freq:620, dur:.07, vol:.13, type:"triangle" }); tone({ freq:930, dur:.09, vol:.12, type:"triangle", delay:.06 }); },
+  gem:    () => { tone({ freq:1250, dur:.05, vol:.08, type:"triangle" }); tone({ freq:1650, dur:.06, vol:.07, type:"triangle", delay:.04 }); },
+  clear:  () => [523,659,784,1047].forEach((f,i) => tone({ freq:f, dur:.17, vol:.12, type:"triangle", delay:i*.09 })),
+  buy:    () => { tone({ freq:700, dur:.06, vol:.12 }); tone({ freq:1050, dur:.09, vol:.11, delay:.05 }); },
+  ui:     () => tone({ freq:520, dur:.05, vol:.09 }),
+  charge: () => tone({ freq:120, freq2:420, type:"sawtooth", dur:.55, vol:.09 }),
+  boss:   () => { [880,740,590,440,300].forEach((f,i) => tone({ freq:f, dur:.3, vol:.15, delay:i*.13 })); noise({ dur:.9, vol:.14, filt:600 }); },
+  over:   () => tone({ freq:300, freq2:70, type:"sawtooth", dur:.9, vol:.18 }),
+};
+function sfx(k) { if (muted) return; const f = SFX[k]; if (f) { try { f(); } catch (_) {} } }
+
+function toggleMute() {
+  muted = !muted;
+  try { localStorage.setItem(MUTE_KEY, muted ? "1" : "0"); } catch (_) {}
+  if (!muted) sfx("ui");
+}
 
 /* ─────────────────────────── 입력 ─────────────────────────── */
 const keys = Object.create(null);
@@ -149,6 +333,7 @@ const touch = { on: false, active: false, x: 0, y: 0, dash: false };
 function requestAdvance() {
   if (state.sceneLock > 0) return false;
   enterEdge = true;
+  sfx("ui");
   return true;
 }
 
@@ -161,6 +346,7 @@ addEventListener("keydown", e => {
       else if (state.scene === "dead" || state.scene === "ending") { if (state.sceneLock <= 0) enterEdge = true; }
     }
     if (e.code === "KeyJ" || e.code === "Space") { if (state.scene === "play") attackEdge = true; }
+    if (e.code === "KeyM") toggleMute();
   }
   keys[e.code] = true;
 });
@@ -274,8 +460,9 @@ function newGame() {
     player: null,
     map: null, enemies: [], items: [], bullets: [], parts: [], portal: null,
     toast: "", toastT: 0,
-    saved: false,
+    saved: false, submitted: false,
   };
+  rankMine = -1;
   storyIdx = 0;
   makePlayer();
 }
@@ -501,6 +688,7 @@ function update(dt) {
     const dn = Math.hypot(ix, iy) || 1;
     p.dvx = ix / dn * 520; p.dvy = iy / dn * 520;
     burst(p.x, p.y, 8, COL.heroDk, 90, .3);
+    sfx("dash");
   }
 
   if (p.dashT > 0) { p.dashT -= dt; moveEnt(p, p.dvx * dt, p.dvy * dt, g); }
@@ -510,6 +698,7 @@ function update(dt) {
   const REACH = 50;
   if (attackEdge && p.atkCd <= 0) {
     p.atkCd = stat.atkCd(); p.swing = .18;
+    sfx("swing");
     let aim = p.face, bestD = 1e9;
     for (const e of state.enemies) {
       const d = dist(p, e);
@@ -526,6 +715,7 @@ function update(dt) {
       if (dist(p, b) < REACH + 4 && Math.abs(angDiff(Math.atan2(b.y - p.y, b.x - p.x), aim)) < 1.0) {
         burst(b.x, b.y, 5, "#fff", 120, .25);
         popText(b.x, b.y, "쳐냄", "#dff3ff", 11, .6);
+        sfx("parry");
         state.bullets.splice(i, 1);
       }
     }
@@ -566,7 +756,8 @@ function update(dt) {
         state.gems += it.val;
         popText(it.x, it.y, "+" + it.val, COL.gem, 13);
       }
-      if (it.type !== "gem") burst(it.x, it.y, 8, COL.food, 110, .35);
+      if (it.type !== "gem") { burst(it.x, it.y, 8, COL.food, 110, .35); sfx("food"); }
+      else sfx("gem");
     }
   }
 
@@ -633,7 +824,7 @@ function update(dt) {
         if (e.windT <= 0) { e.mode = 2; e.rushT = .45; }
       } else {
         moveEnt(e, Math.cos(toP) * e.spd * dt, Math.sin(toP) * e.spd * dt, g);
-        if (dp < 250 && e.cd <= 0) { e.mode = 1; e.windT = .7; e.aim = toP; }
+        if (dp < 250 && e.cd <= 0) { e.mode = 1; e.windT = .7; e.aim = toP; sfx("charge"); }
       }
     } else {
       const a = toP + (e.type === "spore" ? Math.sin(e.wob * 6) * .5 : 0);
@@ -652,6 +843,7 @@ function update(dt) {
       state.kills++; state.score += d.score;
       burst(e.x, e.y, d.boss ? 60 : 16, d.color, d.boss ? 320 : 190, d.boss ? 1.1 : .5);
       state.shake = d.boss ? 24 : 5;
+      sfx(d.boss ? "boss" : "kill");
       state.items.push({ x:e.x, y:e.y, r:9, type:"gem", val:d.gem, t:0 });
       if (d.split) {                       // 분열체 — 죽으면 둘로 갈라진다
         for (let k = 0; k < d.split; k++) {
@@ -698,6 +890,7 @@ function update(dt) {
       const s = spots.length ? spots[Math.floor(Math.random() * spots.length)] : nearestFree(g, Math.floor(MW/2), 3);
       state.portal = { x:s.x, y:s.y, r:22, t:0 };
       state.flash = .8; state.shake = 14;
+      sfx("clear");
       toast(state.chapterIdx === 0 ? "허공에 동그란 유리창이 떠올랐다" : "다음 게이트가 열렸다");
     }
   } else {
@@ -722,6 +915,7 @@ function stepParticles(dt) {
 }
 
 function finishRun(scene) {
+  if (scene === "dead") sfx("over");
   if (scene === "ending") state.score += Math.max(0, 3000 - Math.floor(state.runTime * 10));
   if (!state.saved) {
     state.saved = true;
@@ -733,6 +927,7 @@ function finishRun(scene) {
 function damageEnemy(e, dmg, dir) {
   e.hp -= dmg;
   e.hit = .12;
+  sfx("hit");
   burst(e.x, e.y, 6, "#ffe8b0", 150, .3);
   popText(e.x, e.y - e.r - 4, String(dmg), "#ffffff", 14, .7);
   moveEnt(e, Math.cos(dir) * 12, Math.sin(dir) * 12, state.map);
@@ -746,6 +941,7 @@ function hurtPlayer(dmg, silent) {
   if (!silent) {
     p.inv = .55; p.hurtT = .25;
     state.shake = 10; state.flash = .5;
+    sfx("hurt");
     popText(p.x, p.y - 26, "-" + Math.round(dmg), COL.danger, 18, .9);
     burst(p.x, p.y, 10, COL.danger, 150, .4);
   }
@@ -780,6 +976,15 @@ function shopButtons() {
 }
 
 function sceneButtons() {
+  if (state.scene === "title") {
+    const snd = { id:"sound", kind:"sound", y:858, w:160, h:46,
+                  label: muted ? "소리 꺼짐" : "소리 켜짐" };
+    if (!rankOn()) return [{ ...snd, x: W/2 - 80 }];
+    return [{ id:"rank", kind:"rank", x:104, y:858, w:160, h:46, label:"랭킹" },
+            { ...snd, x:276 }];
+  }
+  if (state.scene === "rank")
+    return [{ id:"close", kind:"close", x:W/2 - 85, y:H - 104, w:170, h:52 }];
   if (state.scene === "shop") return shopButtons();
   // 엔딩은 본문이 아래까지 내려오므로 버튼을 더 낮게 둔다 (텍스트와 겹치지 않도록)
   if (state.scene === "ending")
@@ -798,11 +1003,17 @@ function hitButton(gx, gy) {
 
 function pressButton(b) {
   if (b.kind === "buy") {
-    if (buyUpgrade(b.id)) { state.flash = .25; }
+    if (buyUpgrade(b.id)) { state.flash = .25; sfx("buy"); }
   } else if (b.kind === "go") {
-    gotoCard();
+    sfx("ui"); gotoCard();
   } else if (b.kind === "restart") {
-    newGame();
+    sfx("ui"); newGame();
+  } else if (b.kind === "rank") {
+    sfx("ui"); fetchRanking(); setScene("rank", 0.3);
+  } else if (b.kind === "close") {
+    sfx("ui"); newGame(); setScene("title", 0.3);
+  } else if (b.kind === "sound") {
+    toggleMute();
   }
 }
 
@@ -857,6 +1068,7 @@ function setupInput() {
 
   wrap.addEventListener("pointerdown", e => {
     if (e.pointerType !== "mouse") enableTouchUI();
+    wakeAudio();               // 모바일은 사용자 제스처가 있어야 오디오가 열린다
     e.preventDefault();
 
     if (state.scene !== "play") {
@@ -913,6 +1125,64 @@ function setupInput() {
 /* 표시 크기는 CSS 비율 계산에 맡기지 않고 직접 픽셀로 지정한다.
    documentElement.clientHeight 는 html 이 position:fixed 라 실제 보이는 높이를 준다
    (100vh 와 달리 주소창 유무에 속지 않는다). */
+/* ─────────────────────────── 랭킹 등록 폼 ─────────────────────────── */
+function setupRankForm() {
+  const form = document.getElementById("rankform");
+  const nick = document.getElementById("rf-nick");
+  const go   = document.getElementById("rf-go");
+  const skip = document.getElementById("rf-skip");
+  const msg  = document.getElementById("rf-msg");
+  const sub  = document.getElementById("rf-sub");
+  if (!form) return;
+
+  try { nick.value = localStorage.getItem(NICK_KEY) || ""; } catch (_) {}
+
+  const close = () => { state.submitted = true; document.body.classList.remove("asknick"); };
+
+  skip.addEventListener("click", e => { e.preventDefault(); close(); });
+
+  go.addEventListener("click", async e => {
+    e.preventDefault();
+    const v = nick.value.trim().slice(0, 12);
+    if (!v) { msg.textContent = "닉네임을 입력해 주세요"; return; }
+    go.disabled = skip.disabled = true;
+    msg.style.color = "#7fbfa6"; msg.textContent = "등록 중…";
+    try {
+      try { localStorage.setItem(NICK_KEY, v); } catch (_) {}
+      await submitScore(v);
+      close();
+      setScene("rank", 0.3);
+    } catch (err) {
+      msg.style.color = "#ff8a8a";
+      msg.textContent = err.message || "등록에 실패했습니다";
+    } finally {
+      go.disabled = skip.disabled = false;
+    }
+  });
+
+  nick.addEventListener("keydown", e => {
+    e.stopPropagation();                       // 게임 키 입력과 섞이지 않게
+    if (e.code === "Enter") go.click();
+  });
+  nick.addEventListener("keyup", e => e.stopPropagation());
+
+  /* 표시 조건: 게임이 끝났고, 랭킹이 켜져 있고, 아직 등록/건너뛰기 전이고,
+     입력 잠금이 풀렸을 때. 잠금을 기다리는 이유는 연타하던 손가락이
+     폼을 곧바로 넘겨버리는 걸 막기 위함이다. */
+  form.__sync = () => {
+    const over = state.scene === "dead" || state.scene === "ending";
+    const show = over && rankOn() && !state.submitted && state.sceneLock <= 0 && state.score > 0;
+    if (show && !document.body.classList.contains("asknick")) {
+      sub.textContent = `점수 ${state.score} · STAGE ${state.chapterIdx + 1}`;
+      msg.textContent = "";
+      document.body.classList.add("asknick");
+      if (!touch.on) setTimeout(() => nick.focus(), 30);   // 모바일은 자동 포커스 시 키보드가 튀어나와 방해됨
+    } else if (!show && !over) {
+      document.body.classList.remove("asknick");
+    }
+  };
+}
+
 function fitCanvas() {
   const de = document.documentElement;
   const vw = de.clientWidth  || W;
@@ -947,10 +1217,11 @@ function draw() {
   ctx.fillStyle = "#0b0f10"; ctx.fillRect(0, 0, W, H);
 
   const sc = state.scene;
-  if (sc === "title")      { drawTitle();  ctx.restore(); return; }
+  if (sc === "title")      { drawTitle();  ctx.restore(); drawButtons(); return; }
   if (sc === "story")      { drawStory();  ctx.restore(); return; }
   if (sc === "card")       { drawCard();   ctx.restore(); return; }
   if (sc === "shop")       { drawShop();   ctx.restore(); return; }
+  if (sc === "rank")       { drawRank();   ctx.restore(); drawButtons(); return; }
   if (sc === "ending")     { drawEnding(); ctx.restore(); drawButtons(); return; }
 
   // 아레나는 HUD 아래 전용 공간에 그린다. 월드 좌표 (0,0)~(W,AH) 가 여기로 옮겨진다.
@@ -1271,8 +1542,9 @@ function drawButtons() {
       ctx.font = "bold 15px sans-serif";
       ctx.fillText(lv >= UP_MAX ? "MAX" : "◆ " + UP_COST[lv], b.x + b.w / 2, b.y + b.h / 2 + 5);
     } else {
-      ctx.font = "bold 19px sans-serif";
-      ctx.fillText(b.kind === "go" ? "출발" : "다시 시작", b.x + b.w / 2, b.y + b.h / 2 + 7);
+      const label = b.label || (b.kind === "go" ? "출발" : "다시 시작");
+      ctx.font = "bold " + (b.label ? 15 : 19) + "px sans-serif";
+      ctx.fillText(label, b.x + b.w / 2, b.y + b.h / 2 + (b.label ? 5 : 7));
     }
   }
 }
@@ -1452,6 +1724,66 @@ function drawShop() {
   if (state.fade > 0) { ctx.fillStyle = `rgba(0,0,0,${state.fade})`; ctx.fillRect(0, 0, W, H); }
 }
 
+/* ── 랭킹 ── */
+function drawRank() {
+  ctx.fillStyle = "#090d0c"; ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = "center";
+  ctx.fillStyle = COL.hero; ctx.font = "bold 26px sans-serif";
+  ctx.fillText("랭킹", W / 2, 110);
+  ctx.fillStyle = COL.dim; ctx.font = "12px sans-serif";
+  ctx.fillText("이세계전사 김대원 · 전체 기록", W / 2, 134);
+
+  if (rankState === "loading" && !rankRows) {
+    ctx.fillStyle = COL.dim; ctx.font = "14px sans-serif";
+    ctx.fillText("불러오는 중…", W / 2, 300); return;
+  }
+  if (rankState === "error" && !(rankRows && rankRows.length)) {
+    ctx.fillStyle = "#ff8a8a"; ctx.font = "14px sans-serif";
+    ctx.fillText("랭킹을 불러오지 못했습니다", W / 2, 292);
+    ctx.fillStyle = COL.dim; ctx.font = "12px sans-serif";
+    ctx.fillText("네트워크 연결을 확인해 주세요", W / 2, 316); return;
+  }
+  if (!rankRows || !rankRows.length) {
+    ctx.fillStyle = COL.dim; ctx.font = "14px sans-serif";
+    ctx.fillText("아직 등록된 기록이 없습니다", W / 2, 292);
+    ctx.fillText("첫 번째 생존자가 되어보세요", W / 2, 318); return;
+  }
+
+  ctx.textAlign = "left"; ctx.font = "10px sans-serif"; ctx.fillStyle = COL.dim;
+  ctx.fillText("순위", 26, 176); ctx.fillText("닉네임", 76, 176);
+  ctx.textAlign = "right";
+  ctx.fillText("스테이지", W - 118, 176); ctx.fillText("점수", W - 26, 176);
+  ctx.strokeStyle = "rgba(143,227,192,.15)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(20, 184); ctx.lineTo(W - 20, 184); ctx.stroke();
+
+  const rows = rankRows.slice(0, RANK_LIMIT);
+  rows.forEach((r, i) => {
+    const y = 212 + i * 32;
+    const me = i === rankMine;
+    if (me) { ctx.fillStyle = "rgba(143,227,192,.12)"; ctx.fillRect(20, y - 18, W - 40, 28); }
+
+    ctx.textAlign = "left";
+    ctx.font = "bold 13px sans-serif";
+    ctx.fillStyle = i === 0 ? "#ffd166" : i === 1 ? "#d8e4e0" : i === 2 ? "#d99a5b" : COL.dim;
+    ctx.fillText(String(i + 1), 28, y);
+
+    ctx.fillStyle = me ? COL.hero : COL.text;
+    ctx.font = (me ? "bold " : "") + "14px sans-serif";
+    ctx.fillText(String(r.nick || "?").slice(0, 12), 76, y);
+
+    ctx.textAlign = "right";
+    ctx.fillStyle = COL.dim; ctx.font = "12px sans-serif";
+    ctx.fillText(String(r.stage ?? "-"), W - 128, y);
+    ctx.fillStyle = me ? COL.hero : COL.text; ctx.font = "bold 14px sans-serif";
+    ctx.fillText(String(r.score), W - 26, y);
+  });
+
+  if (rankMine >= 0) {
+    ctx.textAlign = "center"; ctx.fillStyle = COL.hero; ctx.font = "bold 14px sans-serif";
+    ctx.fillText(`${rankMine + 1}위로 등록되었습니다`, W / 2, H - 140);
+  }
+}
+
 /* ── 엔딩 ── */
 function drawEnding() {
   ctx.fillStyle = "#07090a"; ctx.fillRect(0, 0, W, H);
@@ -1493,12 +1825,15 @@ function loop(now) {
   update(state.scene === "bossdown" ? dt * 0.35 : dt);   // 격파 연출은 슬로모션
   draw();
   document.body.classList.toggle("playing", state.scene === "play");
+  const rf = document.getElementById("rankform");
+  if (rf && rf.__sync) rf.__sync();
   requestAnimationFrame(loop);
 }
 
 newGame();
 fitCanvas();
 setupInput();
+setupRankForm();
 addEventListener("resize", fitCanvas);
 draw();
 requestAnimationFrame(loop);
