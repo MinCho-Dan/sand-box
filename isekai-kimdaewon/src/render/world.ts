@@ -4,6 +4,7 @@ import { ENEMY_DEF } from "../data/enemies";
 import { WEAPONS } from "../data/weapons";
 import { curWeapon, state, stat } from "../core/state";
 import type { ToolId } from "../types";
+import { blit } from "../assets/bake";
 import { ctx } from "./ctx";
 
 export function drawMap(): void {
@@ -231,16 +232,20 @@ export function drawEnemies(): void {
       ctx.fill();
       ctx.globalAlpha = 1;
     }
-    ctx.fillStyle = e.hit > 0 ? "#ffffff" : d.color;
-    ctx.beginPath();
-    ctx.arc(0, Math.sin(e.wob * 7) * 0.8, e.r, 0, 7);
-    ctx.fill();
-    ctx.fillStyle = e.hit > 0 ? "#333" : "#ff4d4d";
-    const ey = e.r * 0.18;
-    ctx.fillRect(-e.r * 0.45, ey - 2, e.r * 0.3, 3);
-    ctx.fillRect(e.r * 0.15, ey - 2, e.r * 0.3, 3);
+    // 발밑 그림자 — 스프라이트가 바닥에서 떠 보이지 않게
     ctx.fillStyle = "rgba(0,0,0,.35)";
-    ctx.fillRect(-e.r * 0.6, e.r - 2, e.r * 1.2, 3);
+    ctx.beginPath();
+    ctx.ellipse(0, e.r * 0.92, e.r * 0.85, e.r * 0.3, 0, 0, 7);
+    ctx.fill();
+
+    const bob = Math.sin(e.wob * 7) * 0.8;
+    if (!blit(ctx, e.type, 0, bob, e.hit > 0 ? "#ffffff" : undefined)) {
+      // 캔버스를 못 만드는 환경 폴백
+      ctx.fillStyle = e.hit > 0 ? "#ffffff" : d.color;
+      ctx.beginPath();
+      ctx.arc(0, bob, e.r, 0, 7);
+      ctx.fill();
+    }
     ctx.restore();
 
     if (e.hp < e.maxhp) {
@@ -317,20 +322,30 @@ export function drawPlayer(): void {
   ctx.beginPath();
   ctx.ellipse(0, p.r - 1, p.r * 0.9, p.r * 0.35, 0, 0, 7);
   ctx.fill();
+  // 어두운 바닥에서도 김대원이 묻히지 않게 마력 잔광을 깐다
+  ctx.globalAlpha = 0.16 + Math.sin(state.time * 3) * 0.04;
+  ctx.fillStyle = COL.cyan;
+  ctx.beginPath();
+  ctx.arc(0, -2, p.r + 7, 0, 7);
+  ctx.fill();
+  ctx.globalAlpha = 1;
   if (p.inv > 0 && Math.floor(p.inv * 20) % 2 === 0) ctx.globalAlpha = 0.45;
-  ctx.fillStyle = p.hurtT > 0 ? "#ffffff" : "#2f4b41";
-  ctx.fillRect(-9, -6, 18, 16);
-  ctx.fillStyle = p.hurtT > 0 ? "#ffffff" : COL.hero;
-  ctx.beginPath();
-  ctx.arc(0, -11, 8, 0, 7);
-  ctx.fill();
-  ctx.fillStyle = "#101a17";
-  ctx.beginPath();
-  ctx.arc(Math.cos(p.face) * 3 - 3, -11 + Math.sin(p.face) * 2, 2.6, 0, 7);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(Math.cos(p.face) * 3 + 3, -11 + Math.sin(p.face) * 2, 2.6, 0, 7);
-  ctx.fill();
+
+  // 몸은 항상 정면을 보고, 진행 방향은 좌우 반전으로만 알린다.
+  // 위/아래로 갈 때 몸이 눕는 것보다 이쪽이 읽기 쉽다.
+  const flip = Math.cos(p.face) < 0;
+  ctx.save();
+  if (flip) ctx.scale(-1, 1);
+  if (!blit(ctx, "hero", 0, -6, p.hurtT > 0 ? "#ffffff" : undefined)) {
+    ctx.fillStyle = p.hurtT > 0 ? "#ffffff" : COL.armor;
+    ctx.fillRect(-9, -6, 18, 16);
+    ctx.fillStyle = p.hurtT > 0 ? "#ffffff" : COL.skin;
+    ctx.beginPath();
+    ctx.arc(0, -11, 8, 0, 7);
+    ctx.fill();
+  }
+  ctx.restore();
+
   ctx.rotate(p.face);
   const sw = p.swing > 0 ? 1 - p.swing / 0.18 : 0;
   ctx.rotate(p.swing > 0 ? -0.9 + sw * 1.8 : 0.25);

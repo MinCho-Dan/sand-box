@@ -24,7 +24,7 @@ export const ENEMY_DEF: Record<EnemyType, EnemyDef> = {
   watcher: { name: "흑마법사", hp: 52, spd: 42, r: 16, dmg: 9, color: "#5f7fd3", score: 180, gem: 6, ranged: true },
   charger: { name: "돌진병", hp: 46, spd: 60, r: 16, dmg: 16, color: "#c46a4a", score: 220, gem: 5, charge: true, rush: 430 },
   splitter: { name: "분열체", hp: 40, spd: 72, r: 17, dmg: 11, color: "#7fd15f", score: 150, gem: 4, split: 2 },
-  boss: { name: "마왕 현상", hp: 560, spd: 46, r: 34, dmg: 18, color: "#b06cff", score: 1500, gem: 40, boss: true },
+  boss: { name: "마왕 현상", hp: 700, spd: 46, r: 34, dmg: 15, color: "#b06cff", score: 1500, gem: 40, boss: true },
 };
 
 export const CODEX: Record<EnemyType, string> = {

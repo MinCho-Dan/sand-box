@@ -38,11 +38,11 @@ export function updateEnemies(dt: number): void {
           burst(state, e.x, e.y, 20, "#b06cff", 200, 0.5);
           e.cd = 3.4;
         } else {
-          const n = hpR < 0.5 ? 13 : 10;
+          const n = hpR < 0.5 ? 12 : 9;
           const off = rnd(0, Math.PI * 2);
           for (let k = 0; k < n; k++) {
             const a = off + (k / n) * Math.PI * 2;
-            state.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 150, vy: Math.sin(a) * 150, r: 6, dmg: 11, life: 5 });
+            state.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 150, vy: Math.sin(a) * 150, r: 6, dmg: 8, life: 5 });
           }
           state.shake = 8;
           e.cd = hpR < 0.5 ? 1.7 : 2.3;

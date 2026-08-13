@@ -1,12 +1,12 @@
 import { BATT_MAX } from "../data/weapons";
-import { COL, H, HUD_H, W } from "../config";
+import { COL, H, HUD_H, UI, W } from "../config";
 import { CHAPTERS } from "../data/chapters";
 import { UP_COST, UP_MAX } from "../data/upgrades";
-import { curWeapon, state, stat } from "../core/state";
+import { curWeapon, stageProgress, state, stat } from "../core/state";
 import { canBuy } from "../systems/shop";
 import { sceneButtons } from "../systems/ui";
 import type { UpgradeId } from "../types";
-import { bar, blink, ctx, ready } from "./ctx";
+import { bar, blink, ctx, ready, stageTrack } from "./ctx";
 
 export function drawHUD(): void {
   const p = state.player;
@@ -14,19 +14,17 @@ export function drawHUD(): void {
   const hpR = p.hp / stat.maxhp();
   const fdR = p.hunger / stat.maxfood();
 
-  ctx.fillStyle = "#0a100e";
+  ctx.fillStyle = COL.panel;
   ctx.fillRect(0, 0, W, HUD_H);
-  ctx.fillStyle = "rgba(143,227,192,.14)";
-  ctx.fillRect(0, HUD_H - 2, W, 2);
 
   ctx.textAlign = "left";
   ctx.font = "11px sans-serif";
   ctx.fillStyle = COL.dim;
   ctx.fillText("체력", 16, 22);
-  bar(78, 12, 164, 12, hpR, hpR < 0.3 ? "#ff5c5c" : "#4fd18b");
+  bar(78, 12, 164, 12, hpR, hpR < 0.3 ? COL.danger : "#46d17f");
   ctx.fillStyle = COL.dim;
   ctx.fillText("허기", 16, 41);
-  bar(78, 31, 164, 12, fdR, fdR < 0.25 ? "#ff8a3d" : "#ffd166");
+  bar(78, 31, 164, 12, fdR, fdR < 0.25 ? COL.fire : COL.food);
 
   // 라벨은 현재 무기, 게이지는 배터리. 렌치일 땐 비축량을 흐리게 보여준다.
   const wp = curWeapon();
@@ -34,7 +32,7 @@ export function drawHUD(): void {
   ctx.fillStyle = on ? wp.color : COL.dim;
   ctx.font = "10px sans-serif";
   ctx.fillText(wp.name, 16, 60);
-  bar(78, 50, 164, 12, state.battery / BATT_MAX, on ? (state.battery < 25 ? "#ff8a3d" : COL.batt) : "rgba(127,224,255,.30)");
+  bar(78, 50, 164, 12, state.battery / BATT_MAX, on ? (state.battery < 25 ? COL.fire : COL.batt) : "rgba(111,228,255,.26)");
 
   ctx.textAlign = "right";
   ctx.fillStyle = COL.gem;
@@ -44,31 +42,46 @@ export function drawHUD(): void {
   ctx.font = "bold 14px sans-serif";
   ctx.fillText(String(state.score).padStart(6, "0"), W - 16, 50);
 
-  ctx.fillStyle = "rgba(255,255,255,.05)";
-  ctx.fillRect(16, 68, W - 32, 26);
+  ctx.fillStyle = "rgba(255,255,255,.04)";
+  ctx.fillRect(16, 66, W - 32, 24);
   ctx.textAlign = "left";
   ctx.font = "bold 12px sans-serif";
   ctx.fillStyle = COL.text;
-  ctx.fillText(`STAGE ${state.chapterIdx + 1} · ${ch.name}`, 26, 86);
+  // 자릿수가 고정(스테이지 1~8)이라 고정 좌표로 나눠 그린다
+  ctx.fillText(`STAGE ${state.chapterIdx + 1}`, 26, 83);
+  ctx.fillStyle = COL.dim;
+  ctx.font = "11px sans-serif";
+  ctx.fillText(`/ ${CHAPTERS.length}`, 84, 83);
+  ctx.fillStyle = COL.text;
+  ctx.font = "bold 12px sans-serif";
+  ctx.fillText(ch.name, 118, 83);
   ctx.textAlign = "right";
   ctx.font = "12px sans-serif";
   ctx.fillStyle = COL.dim;
   ctx.fillText(
     ch.kind === "scavenge" ? `보급품 ${p.supplies} / ${ch.need ?? 0}` : `남은 적 ${state.enemies.length}`,
-    W - 26, 86,
+    W - 26, 83,
   );
+
+  // 전체 여정 중 지금 어디쯤인지 — HUD 맨 아래를 가로지르는 트랙
+  stageTrack(16, HUD_H - 10, W - 32, 6, state.chapterIdx, stageProgress());
 }
 
 export function drawButtons(): void {
   for (const b of sceneButtons()) {
     const on = b.kind === "buy" ? canBuy(b.id as UpgradeId) : ready();
-    ctx.fillStyle = on ? "rgba(143,227,192,.16)" : "rgba(40,55,50,.25)";
+    ctx.fillStyle = on ? UI.btn : UI.btnOff;
     ctx.fillRect(b.x, b.y, b.w, b.h);
-    ctx.strokeStyle = on ? "rgba(143,227,192,.6)" : "rgba(80,110,100,.3)";
+    ctx.strokeStyle = on ? UI.line : UI.offLine;
     ctx.lineWidth = 2;
     ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+    if (on) {
+      // 위쪽 모서리에 얇은 금색 하이라이트 — 눌리는 판처럼 보이게
+      ctx.fillStyle = "rgba(255,215,94,.16)";
+      ctx.fillRect(b.x + 2, b.y + 2, b.w - 4, 2);
+    }
     ctx.textAlign = "center";
-    ctx.fillStyle = on ? COL.hero : "#4a635a";
+    ctx.fillStyle = on ? COL.hero : UI.offText;
 
     if (b.kind === "buy") {
       const lv = state.up[b.id as UpgradeId];
@@ -86,7 +99,7 @@ export function drawButtons(): void {
 export function drawOverlays(touchOn: boolean): void {
   if (state.toastT > 0) {
     ctx.globalAlpha = Math.max(0, Math.min(1, state.toastT));
-    ctx.fillStyle = "rgba(6,10,9,.82)";
+    ctx.fillStyle = "rgba(8,11,24,.88)";
     ctx.textAlign = "center";
     ctx.font = "bold 15px sans-serif";
     const w = ctx.measureText(state.toast).width + 36;

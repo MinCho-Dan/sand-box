@@ -1,8 +1,9 @@
 import { bgmTick } from "./audio";
+import { loadKeyArt } from "./assets/keyart";
 import { H, W } from "./config";
 import { setupInput } from "./core/input";
 import { input, touch } from "./core/inputState";
-import { newGame, state } from "./core/state";
+import { beginChapter, gotoCard, newGame, setScene, state } from "./core/state";
 import { draw } from "./render";
 import { setCtx } from "./render/ctx";
 import { setupRankForm, syncRankForm } from "./ui/rankForm";
@@ -52,6 +53,30 @@ function loop(now: number): void {
   requestAnimationFrame(loop);
 }
 
+/** 개발 중 화면 확인용. 콘솔에서 __dbg.stage(6) / __dbg.scene("ending") 으로
+ *  아무 장면이나 바로 띄운다. `npm run build`(production) 에서는 통째로 제거된다.
+ *  빌드해서 확인해야 할 때는 `vite build --mode development`. */
+if (import.meta.env.MODE !== "production") {
+  (window as unknown as Record<string, unknown>).__dbg = {
+    // state 는 newGame 에서 재할당되므로 게터로 노출해야 최신 것을 본다
+    get state() {
+      return state;
+    },
+    stage(i: number) {
+      newGame();
+      state.pendingChapter = i;
+      beginChapter();
+    },
+    card(i: number) {
+      newGame();
+      state.pendingChapter = i;
+      gotoCard();
+    },
+    scene: setScene,
+  };
+}
+
+loadKeyArt();
 newGame();
 fitCanvas();
 setupInput(canvas);

@@ -1,4 +1,5 @@
-import { COL, H, TS, W } from "../config";
+import { COL, H, TS, UI, W } from "../config";
+import { drawCover, keyArt } from "../assets/keyart";
 import { CHAPTERS, ENDING_TEXT, STORY } from "../data/chapters";
 import { CODEX, ENEMY_DEF } from "../data/enemies";
 import { UPGRADES, UP_MAX } from "../data/upgrades";
@@ -7,10 +8,12 @@ import { newEnemiesFor, state } from "../core/state";
 import { SUPPLY_SCORE } from "../systems/items";
 import { rank, RANK_LIMIT } from "../systems/ranking";
 import { SHOP_ROW_H, SHOP_ROW_Y } from "../systems/shop";
-import { blink, clearScreen, ctx, fmt, tapPrompt } from "./ctx";
+import { blink, clearScreen, ctx, fmt, stageTrack, tapPrompt } from "./ctx";
 import { drawButtons } from "./hud";
 
 const SCORE_RULE = "점수 = 처치 + 보급품 + 클리어 시간 보너스";
+/** 타이틀 하단 어둠막이 시작되는 높이 — 버튼과 안내가 이 아래에 올라간다 */
+const SCRIM_Y = 808;
 
 /** 결과 화면의 점수 내역표 */
 function drawScoreBreakdown(y: number, cleared: boolean): number {
@@ -31,7 +34,7 @@ function drawScoreBreakdown(y: number, cleared: boolean): number {
     y += 22;
   }
 
-  ctx.strokeStyle = "rgba(143,227,192,.22)";
+  ctx.strokeStyle = UI.lineDim;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(96, y - 12);
@@ -47,19 +50,57 @@ function drawScoreBreakdown(y: number, cleared: boolean): number {
 
   if (!cleared) {
     ctx.textAlign = "center";
-    ctx.fillStyle = "#4a635a";
+    ctx.fillStyle = UI.offText;
     ctx.font = "11px sans-serif";
     ctx.fillText("마왕을 쓰러뜨리면 시간 보너스가 붙는다", W / 2, y + 32);
+    return y + 60; // 안내 한 줄이 더 들어갔으니 다음 줄을 그만큼 내린다
   }
   return y + 44;
 }
 
 /* ── 타이틀 ── */
 export function drawTitle(touchOn: boolean): void {
-  const t = state.time;
-  clearScreen("#0b0f10");
+  clearScreen(COL.bg);
 
-  ctx.strokeStyle = "rgba(80,140,120,.05)";
+  const art = keyArt();
+  if (art) drawCover(ctx, art);
+  else drawTitleFallback();
+
+  // 아래쪽에 버튼이 올라가므로 어둡게 깔아 글자가 읽히게 한다
+  const g = ctx.createLinearGradient(0, SCRIM_Y, 0, H);
+  g.addColorStop(0, "rgba(8,11,24,0)");
+  g.addColorStop(0.4, "rgba(8,11,24,.80)");
+  g.addColorStop(1, "rgba(8,11,24,.97)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, SCRIM_Y, W, H - SCRIM_Y);
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = blink() ? COL.hero : COL.heroDk;
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText("★ 지금 다운로드하세요 ★", W / 2, 834);
+
+  // 최고 점수는 아트 구도를 건드리지 않게 상단에 작은 띠로 띄운다
+  if (getBest() > 0) {
+    const label = "최고 점수  " + fmt(getBest());
+    ctx.font = "bold 14px sans-serif";
+    const w = 150;
+    ctx.fillStyle = "rgba(8,11,24,.72)";
+    ctx.fillRect(W / 2 - w / 2, 22, w, 30);
+    ctx.strokeStyle = UI.lineDim;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(W / 2 - w / 2 + 0.5, 22.5, w - 1, 29);
+    ctx.fillStyle = COL.hero;
+    ctx.fillText(label, W / 2, 42);
+  }
+
+  drawButtons();
+  void touchOn;
+}
+
+/** 키 아트 파일이 없을 때의 타이틀 — 허공에 뜬 동그란 유리창 */
+function drawTitleFallback(): void {
+  const t = state.time;
+  ctx.strokeStyle = "rgba(80,110,180,.06)";
   ctx.lineWidth = 1;
   for (let x = 0; x < W; x += TS) {
     ctx.beginPath();
@@ -135,36 +176,14 @@ export function drawTitle(touchOn: boolean): void {
   ctx.fillStyle = COL.hero;
   ctx.font = "bold 38px sans-serif";
   ctx.fillText("이세계전사 김대원", W / 2, 490);
-  ctx.fillStyle = blink() ? "#ffd166" : "#6b5a2e";
-  ctx.font = "bold 14px sans-serif";
-  ctx.fillText("★ 지금 다운로드하세요 ★", W / 2, 520);
-
-  ctx.fillStyle = COL.dim;
-  ctx.font = "13px sans-serif";
-  if (touchOn) {
-    ctx.fillText("왼쪽 화면을 끌어 이동", W / 2, 590);
-    ctx.fillText("오른쪽 [공격] [회피] 버튼", W / 2, 612);
-  } else {
-    ctx.fillText("이동 WASD·방향키    공격 J·Space", W / 2, 590);
-    ctx.fillText("회피 K·Shift    음소거 M", W / 2, 612);
-  }
-  ctx.fillText("허기가 0이 되면 체력이 깎인다.", W / 2, 644);
-  ctx.fillStyle = "#4a635a";
+  ctx.fillStyle = UI.offText;
   ctx.font = "12px sans-serif";
-  ctx.fillText(SCORE_RULE, W / 2, 668);
-
-  if (getBest() > 0) {
-    ctx.fillStyle = COL.food;
-    ctx.font = "bold 15px sans-serif";
-    ctx.fillText("최고 점수  " + fmt(getBest()), W / 2, 724);
-  }
-
-  drawButtons();
+  ctx.fillText(SCORE_RULE, W / 2, 528);
 }
 
 /* ── 스토리 ── */
 export function drawStory(touchOn: boolean): void {
-  clearScreen("#07090a");
+  clearScreen(COL.bg);
   const lines = STORY[Math.min(state.storyIdx, STORY.length - 1)].split("\n");
   ctx.textAlign = "center";
   let y = H / 2 - lines.length * 13;
@@ -183,21 +202,26 @@ export function drawStory(touchOn: boolean): void {
 export function drawCard(touchOn: boolean): void {
   const i = state.pendingChapter;
   const ch = CHAPTERS[i];
-  clearScreen("#07090a");
+  clearScreen(COL.bg);
   ctx.textAlign = "center";
 
   ctx.fillStyle = COL.dim;
   ctx.font = "bold 15px sans-serif";
-  ctx.fillText("STAGE " + (i + 1), W / 2, 250);
+  ctx.fillText(`STAGE ${i + 1} / ${CHAPTERS.length}`, W / 2, 248);
   ctx.fillStyle = COL.hero;
   ctx.font = "bold 30px sans-serif";
-  ctx.fillText(ch.name, W / 2, 292);
+  ctx.fillText(ch.name, W / 2, 290);
 
-  ctx.strokeStyle = "rgba(143,227,192,.2)";
+  stageTrack(90, 308, W - 180, 8, i, 0);
+  ctx.fillStyle = COL.dim;
+  ctx.font = "11px sans-serif";
+  ctx.fillText(i === CHAPTERS.length - 1 ? "마지막 스테이지" : `마왕성까지 ${CHAPTERS.length - 1 - i}스테이지`, W / 2, 336);
+
+  ctx.strokeStyle = UI.lineDim;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(90, 316);
-  ctx.lineTo(W - 90, 316);
+  ctx.moveTo(90, 352);
+  ctx.lineTo(W - 90, 352);
   ctx.stroke();
 
   const total = Object.values(ch.spawn ?? {}).reduce((a, b) => a + (b ?? 0), 0);
@@ -207,17 +231,17 @@ export function drawCard(touchOn: boolean): void {
     : `적 ${total}마리를 처치하라`;
   ctx.fillStyle = COL.text;
   ctx.font = "14px sans-serif";
-  ctx.fillText("목표 — " + goal, W / 2, 350);
+  ctx.fillText("목표 — " + goal, W / 2, 384);
   ctx.fillStyle = COL.dim;
   ctx.font = "italic 13px sans-serif";
-  ctx.fillText(`"${ch.flavor}"`, W / 2, 382);
+  ctx.fillText(`"${ch.flavor}"`, W / 2, 414);
 
-  let y = 460;
+  let y = 486;
   for (const t of newEnemiesFor(i)) {
     const d = ENEMY_DEF[t];
-    ctx.fillStyle = "rgba(255,209,102,.08)";
+    ctx.fillStyle = UI.fill;
     ctx.fillRect(50, y - 34, W - 100, 96);
-    ctx.strokeStyle = "rgba(255,209,102,.25)";
+    ctx.strokeStyle = UI.lineDim;
     ctx.lineWidth = 1;
     ctx.strokeRect(50.5, y - 33.5, W - 101, 95);
 
@@ -252,19 +276,30 @@ export function drawCard(touchOn: boolean): void {
     y += 116;
   }
 
+  // 조작법은 타이틀(키 아트) 대신 여기에 둔다 — 플레이 직전이라 더 눈에 들어온다
+  ctx.textAlign = "center";
+  ctx.fillStyle = UI.offText;
+  ctx.font = "12px sans-serif";
+  ctx.fillText(
+    touchOn ? "왼쪽 화면을 끌어 이동 · 오른쪽 [공격] [회피]" : "이동 WASD · 공격 J · 회피 K · 음소거 M",
+    W / 2, H - 156,
+  );
+
   tapPrompt(H - 120, touchOn);
 }
 
 /* ── 상점 ── */
 export function drawShop(touchOn: boolean): void {
-  clearScreen("#090d0c");
+  clearScreen(COL.bg);
   ctx.textAlign = "center";
   ctx.fillStyle = COL.hero;
   ctx.font = "bold 26px sans-serif";
   ctx.fillText("보급 상점", W / 2, 120);
+  const nx = state.pendingChapter;
   ctx.fillStyle = COL.dim;
   ctx.font = "12px sans-serif";
-  ctx.fillText("다음 스테이지로 떠나기 전에", W / 2, 146);
+  ctx.fillText(`다음 — STAGE ${nx + 1} / ${CHAPTERS.length} · ${CHAPTERS[nx]?.name ?? ""}`, W / 2, 146);
+  stageTrack(110, 158, W - 220, 6, nx, 0);
   ctx.fillStyle = COL.gem;
   ctx.font = "bold 22px sans-serif";
   ctx.fillText("◆ " + state.gems, W / 2, 190);
@@ -282,7 +317,7 @@ export function drawShop(touchOn: boolean): void {
     ctx.font = "11px sans-serif";
     ctx.fillText(u.eff, 32, y + 10);
     for (let k = 0; k < UP_MAX; k++) {
-      ctx.fillStyle = k < lv ? COL.hero : "rgba(143,227,192,.16)";
+      ctx.fillStyle = k < lv ? COL.hero : UI.off;
       ctx.fillRect(32 + k * 18, y + 20, 13, 5);
     }
   });
@@ -302,7 +337,7 @@ export function drawShop(touchOn: boolean): void {
 
 /* ── 랭킹 ── */
 export function drawRank(): void {
-  clearScreen("#090d0c");
+  clearScreen(COL.bg);
   ctx.textAlign = "center";
   ctx.fillStyle = COL.hero;
   ctx.font = "bold 26px sans-serif";
@@ -337,7 +372,7 @@ export function drawRank(): void {
     ctx.textAlign = "right";
     ctx.fillText("스테이지", W - 118, 176);
     ctx.fillText("점수", W - 26, 176);
-    ctx.strokeStyle = "rgba(143,227,192,.15)";
+    ctx.strokeStyle = UI.lineDim;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(20, 184);
@@ -348,12 +383,12 @@ export function drawRank(): void {
       const y = 212 + i * 32;
       const me = i === rank.mine;
       if (me) {
-        ctx.fillStyle = "rgba(143,227,192,.12)";
+        ctx.fillStyle = UI.fillOn;
         ctx.fillRect(20, y - 18, W - 40, 28);
       }
       ctx.textAlign = "left";
       ctx.font = "bold 13px sans-serif";
-      ctx.fillStyle = i === 0 ? "#ffd166" : i === 1 ? "#d8e4e0" : i === 2 ? "#d99a5b" : COL.dim;
+      ctx.fillStyle = i === 0 ? COL.hero : i === 1 ? "#cdd8f5" : i === 2 ? "#d08a4a" : COL.dim;
       ctx.fillText(String(i + 1), 28, y);
       ctx.fillStyle = me ? COL.hero : COL.text;
       ctx.font = (me ? "bold " : "") + "14px sans-serif";
@@ -389,11 +424,15 @@ export function drawRank(): void {
 
 /* ── 엔딩 ── */
 export function drawEnding(): void {
-  clearScreen("#07090a");
+  clearScreen(COL.bg);
   ctx.textAlign = "center";
   ctx.fillStyle = COL.hero;
   ctx.font = "bold 28px sans-serif";
   ctx.fillText("마왕 현상, 소멸", W / 2, 150);
+  stageTrack(110, 168, W - 220, 6, CHAPTERS.length, 0);
+  ctx.fillStyle = COL.dim;
+  ctx.font = "11px sans-serif";
+  ctx.fillText(`${CHAPTERS.length}개 스테이지 전부 돌파`, W / 2, 190);
 
   ctx.font = "15px sans-serif";
   ctx.fillStyle = COL.text;
@@ -423,9 +462,13 @@ export function drawDead(): void {
   ctx.fillText("인류, 완전히 멸종", W / 2, 200);
   ctx.fillStyle = COL.dim;
   ctx.font = "14px sans-serif";
-  ctx.fillText(`STAGE ${state.chapterIdx + 1} · ${CHAPTERS[state.chapterIdx].name} 에서 쓰러졌다`, W / 2, 234);
+  ctx.fillText(
+    `STAGE ${state.chapterIdx + 1} / ${CHAPTERS.length} · ${CHAPTERS[state.chapterIdx].name} 에서 쓰러졌다`,
+    W / 2, 234,
+  );
+  stageTrack(110, 252, W - 220, 6, state.chapterIdx, 0);
 
-  const after = drawScoreBreakdown(300, false);
+  const after = drawScoreBreakdown(310, false);
   ctx.textAlign = "center";
   ctx.fillStyle = COL.dim;
   ctx.font = "13px sans-serif";

@@ -1,7 +1,7 @@
 import { AH, MH, MW, TS, W } from "../config";
 import { CHAPTERS, FIRST_TOOL_CHAPTER } from "../data/chapters";
 import { ENEMY_DEF } from "../data/enemies";
-import { BATT_MAX, WEAPONS } from "../data/weapons";
+import { BATT_DROP, BATT_MAX, WEAPONS } from "../data/weapons";
 import type { Enemy, EnemyType, GameState, Player, Scene, ToolId } from "../types";
 import { clearPendingInput } from "./inputState";
 import { freeSpots, makeMap, nearestFree } from "./map";
@@ -45,6 +45,7 @@ function blankState(): GameState {
     fade: 0,
     chapterIdx: 0,
     pendingChapter: 0,
+    spawn0: 0,
     kills: 0,
     score: 0,
     sc: { kills: 0, items: 0, time: 0 },
@@ -162,6 +163,15 @@ export function beginChapter(): void {
   } else if (ch.kind === "boss") {
     const t = nearestFree(state.map, Math.floor(MW / 2), 5);
     state.enemies.push(makeEnemy("boss", t.x, t.y));
+    // 마왕성 입구 보급 — 앞 스테이지에서 배터리를 다 쓰고 도착하면
+    // 렌치로 보스를 깎아야 해서 순수한 지구력 싸움이 된다. 그건 어려운 게 아니라 지겹다.
+    for (const s of [take(), take()]) {
+      state.items.push({ x: s.x, y: s.y, r: 10, type: "batt", val: BATT_DROP, t: 0 });
+    }
+    if (!state.tool) {
+      const s = take();
+      state.items.push({ x: s.x, y: s.y, r: 12, type: "tool", tool: "saw" as ToolId, t: 0 });
+    }
   } else {
     for (const [type, n] of Object.entries(ch.spawn ?? {})) {
       for (let k = 0; k < (n as number); k++) {
@@ -177,7 +187,22 @@ export function beginChapter(): void {
     state.items.push({ x: t.x, y: t.y, r: 12, type: "tool", tool: "driver" as ToolId, t: 0 });
   }
 
+  state.spawn0 = state.enemies.length;
   setScene("play", 0.2);
+}
+
+/** 현재 스테이지 안에서의 진행도 0~1.
+ *  분열체가 늘어나면 1을 넘길 수 있어 clamp 한다. */
+export function stageProgress(): number {
+  const ch = CHAPTERS[state.chapterIdx];
+  if (!ch) return 0;
+  if (state.portal) return 1;
+  if (ch.kind === "scavenge") return clamp(state.player.supplies / (ch.need || 1), 0, 1);
+  if (ch.kind === "boss") {
+    const b = state.enemies.find((e) => e.type === "boss");
+    return b ? clamp(1 - b.hp / b.maxhp, 0, 1) : 1;
+  }
+  return state.spawn0 ? clamp(1 - state.enemies.length / state.spawn0, 0, 1) : 0;
 }
 
 /** 카드에 띄울 신규 적 목록 */

@@ -10,20 +10,48 @@ export const AH = MH * TS; // 864
 export const HUD_H = 108;
 export const H = AH + HUD_H; // 972
 
+/** 팔레트는 키 아트(폭풍우 치는 남색 하늘 · 금색 타이틀 · 시안 검기 ·
+ *  주황 화염 · 보라 균열)에서 뽑았다. 색을 바꿀 일이 있으면 여기만 고친다. */
 export const COL = {
-  floor: "#131a19",
-  floor2: "#101615",
-  wall: "#26332e",
-  wallTop: "#33443c",
-  hero: "#8fe3c0",
-  heroDk: "#3d7f66",
+  bg: "#080b18",
+  panel: "#111a36",
+  floor: "#171d2e",
+  floor2: "#131828",
+  wall: "#2c3550",
+  wallTop: "#3d4870",
+  /** UI 강조색 — 키 아트 타이틀의 금색 */
+  hero: "#ffd75e",
+  heroDk: "#8f5a10",
+  /** 검기 · 배터리 · 마력 */
+  cyan: "#6fe4ff",
+  /** 화염 · 폭발 */
+  fire: "#ff9a2e",
   rift: "#b06cff",
-  danger: "#ff5c5c",
+  danger: "#ff4d5e",
   gem: "#c89bff",
-  food: "#ffd166",
-  batt: "#7fe0ff",
-  text: "#cfe8dd",
-  dim: "#5d7a70",
+  food: "#ffb347",
+  batt: "#6fe4ff",
+  text: "#e6ecff",
+  dim: "#7f8cba",
+  /** 김대원의 갑옷과 피부 */
+  armor: "#38456f",
+  armorLt: "#5a6ca6",
+  skin: "#e8b88c",
+} as const;
+
+/** 패널·버튼·구분선에 반복해서 쓰는 반투명 금색.
+ *  개별 화면에 rgba 문자열을 흩뿌리지 않으려고 모아 뒀다. */
+export const UI = {
+  fill: "rgba(255,215,94,.10)",
+  fillOn: "rgba(255,215,94,.18)",
+  line: "rgba(255,215,94,.55)",
+  lineDim: "rgba(255,215,94,.20)",
+  /** 버튼 바탕 — 금색을 얇게 깔면 올리브색으로 탁해져서 남색 판을 깐다 */
+  btn: "rgba(28,40,78,.88)",
+  btnOff: "rgba(18,24,44,.62)",
+  off: "rgba(38,50,86,.45)",
+  offLine: "rgba(90,108,166,.28)",
+  offText: "#55618f",
 } as const;
 
 export interface Theme {
@@ -35,12 +63,12 @@ export interface Theme {
 }
 
 export const THEMES: Record<string, Theme> = {
-  mart: { f1: COL.floor, f2: COL.floor2, w: COL.wall, wt: COL.wallTop, deco: null },
-  field: { f1: "#1c3520", f2: "#172d1c", w: "#6b5a3a", wt: "#8f7748", deco: "grass" },
-  stone: { f1: "#2b2a26", f2: "#242320", w: "#4a4740", wt: "#5f5b51", deco: "crack" },
-  mine: { f1: "#241d18", f2: "#1d1713", w: "#4a3a2a", wt: "#66513a", deco: "crack" },
-  ice: { f1: "#1b2c38", f2: "#16242e", w: "#3f5a6b", wt: "#5b8098", deco: "ice" },
-  dark: { f1: "#120f1a", f2: "#0e0c15", w: "#241d33", wt: "#33294a", deco: null },
+  mart: { f1: COL.floor, f2: COL.floor2, w: COL.wall, wt: COL.wallTop, deco: "crack" },
+  field: { f1: "#1e3a24", f2: "#18301e", w: "#5d4a2c", wt: "#7d6538", deco: "grass" },
+  stone: { f1: "#262a42", f2: "#1f2338", w: "#454d70", wt: "#5b6590", deco: "crack" },
+  mine: { f1: "#2a1c18", f2: "#221612", w: "#52321f", wt: "#74472a", deco: "crack" },
+  ice: { f1: "#16283e", f2: "#122032", w: "#2f4d70", wt: "#46709c", deco: "ice" },
+  dark: { f1: "#150e26", f2: "#110b1f", w: "#2c1c4a", wt: "#442a6e", deco: null },
 };
 
 /* ── 랭킹 설정 ─────────────────────────────────────────────────

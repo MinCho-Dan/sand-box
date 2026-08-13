@@ -102,6 +102,8 @@ export interface GameState {
   fade: number;
   chapterIdx: number;
   pendingChapter: number;
+  /** 스테이지 시작 시점의 적 수 — 진행도 막대의 분모 */
+  spawn0: number;
   kills: number;
   score: number;
   /** 점수 내역 — 결과 화면에서 어디서 얼마를 벌었는지 보여준다 */

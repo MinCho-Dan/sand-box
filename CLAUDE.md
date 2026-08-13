@@ -42,14 +42,17 @@ npm run dev     # 개발 서버
 
 ```
 src/
-  config.ts      해상도·색·테마·Supabase 설정
+  config.ts      해상도·팔레트(COL/UI)·테마·Supabase 설정
   types.ts       공용 타입
   data/          chapters · enemies · weapons · upgrades (순수 데이터)
   core/          state · map · input · inputState · save · fx · util
+  assets/        sprites(도트 데이터) · bake(스프라이트 굽기) · keyart(타이틀 배경)
   systems/       combat · enemies · items · shop · ranking · ui · update
   render/        ctx · world · hud · screens · index(디스패처)
   audio/         효과음 + 배경음악 (오디오 파일 없이 Web Audio 합성)
   ui/            rankForm (랭킹 등록 DOM 폼)
+public/          정적 파일. 여기에 keyart.png 를 넣으면 타이틀 배경이 된다
+scripts/         개발 도구 (게임 번들에 안 들어간다)
 tests/           vitest
 ```
 
@@ -85,6 +88,36 @@ tests/           vitest
 실제 보호는 RLS 정책이 합니다. `service_role` / `sb_secret_` 키는 절대 넣지 마세요 —
 테스트가 이를 검사합니다.
 
+**그림은 키 아트에서 시작한다.** 팔레트(`config.ts` 의 `COL`/`UI`)와 도트 스프라이트
+(`assets/sprites.ts`)는 전부 타이틀 키 아트 — 남색 폭풍우 하늘, 금색 타이틀, 시안 검기,
+주황 화염, 보라 균열 — 에서 색을 뽑았다. 색을 새로 들일 때는 이 다섯 갈래 안에서 고른다.
+
+**키 아트 파일은 `public/keyart.png`** (jpg·jpeg·webp 도 자동으로 잡는다).
+파일이 없어도 게임은 돌아가고, 타이틀만 도형으로 그린 폴백 화면이 된다.
+
+**도트 스프라이트는 문자열 그림이다.** `assets/sprites.ts` 에서 한 글자가 한 픽셀이고,
+`assets/bake.ts` 가 오프스크린 캔버스에 한 번 구워 그 뒤로는 `drawImage` 만 한다.
+행 길이가 어긋나면 예외가 나고 테스트가 잡는다. 캔버스를 만들 수 없는 환경에서는
+`blit` 이 false 를 돌려주고 호출한 쪽이 도형 그리기로 넘어간다 — 그래서 테스트가 돈다.
+
+### 개발 도구 (scripts/)
+
+브라우저 미리보기를 못 띄우는 환경이 있어서 화면 확인과 밸런스 측정을 CLI 로 한다.
+둘 다 `@napi-rs/canvas` 가 필요한데, 게임에도 CI 에도 안 쓰이므로 package.json 에 넣지 않는다.
+
+```bash
+npm i --no-save @napi-rs/canvas
+npx vite-node scripts/shot.ts -- title stage:5 card:3 shop dead ending   # .shots/*.png
+npx vite-node scripts/balance.ts -- 20                                   # 20회 자동 플레이 통계
+```
+
+`shot.ts` 는 한글이 두부로 나오지 않게 `C:/Windows/Fonts/malgun.ttf` 를 등록한다.
+`balance.ts` 의 봇은 BFS 길찾기를 쓴다 — 게임 본편에는 길찾기가 없다(사람이 하는 일이라
+필요 없다). 없으면 봇이 마트 선반 사이에 끼어 굶어 죽어서 측정이 안 된다.
+
+`npm run dev` 나 `vite build --mode development` 로 띄우면 콘솔에 `__dbg` 가 생긴다
+(`__dbg.stage(6)`, `__dbg.scene("ending")`). `npm run build` 에서는 통째로 사라진다.
+
 ### 밸런스 수치가 있는 곳
 
 - 무기·배터리: `data/weapons.ts` (`drain` 이 스윙당 소모, 주석에 완충 시 스윙 수)
@@ -97,19 +130,24 @@ tests/           vitest
 ## 현재 상태
 
 동작 확인된 것: 8스테이지, 전동공구 4종 + 배터리, 상점 업그레이드 5종, 스테이지 카드 + 적 도감,
-데미지 수치, 마정석, 전역 랭킹(Supabase), 효과음 + 배경음악 3패턴, 모바일 터치 조작.
+데미지 수치, 마정석, 전역 랭킹(Supabase), 효과음 + 배경음악 3패턴, 모바일 터치 조작,
+도트 스프라이트(김대원 + 적 6종), 스테이지 진행도 트랙, 키 아트 타이틀.
+
+### 밸런스 기준선 (2026-08-13, `balance.ts` 20회)
+
+완주 80%. 스테이지별 평균 체력 손실 0 / 4 / 7 / 6 / 9 / 11 / 0 / 91, 스테이지당 12~16초.
+보스만 사망 20%인데, 최종 보스라 의도한 값이다. 수치를 건드리면 이 표와 비교한다.
+봇은 조준이 정확해서 사람보다 덜 맞는다 — 절대값이 아니라 **스테이지 간 상대비**를 봐라.
 
 ### 남은 일
 
-1. **에셋 도입** — CC0 무료 팩(Kenney 등)으로 가기로 결정. 지금은 전부 도형 렌더링이라
-   `render/world.ts` 의 그리기 함수만 교체하면 됩니다. 톤(픽셀 도트 / 벡터 플랫) 미정.
-   스프라이트 로더와 아틀라스 구조를 같이 만들어야 합니다.
-2. **밸런스** — 수치는 전부 추정값이고 실제 플레이 기반 조정이 안 됐습니다.
-   특히 전동공구 배터리(전기톱 9스윙)가 빡빡한지 확인 필요.
+1. **`public/keyart.png` 넣기** — 타이틀 배경 이미지. 지금은 없어서 폴백 화면이 뜬다.
+2. **아이템 스프라이트** — 플레이어와 적만 도트로 바꿨다. 아이템(마정석·배터리·공구·구급함)과
+   타일은 아직 도형이다. `render/world.ts` 의 `drawItems` / `drawMap`.
 3. **Supabase 중복 정리** — `supabase.sql` 을 SQL Editor 에서 다시 실행해야
-   기존에 쌓인 중복 닉네임이 정리되고 트리거가 걸립니다. (2026-08-13 기준 미실행)
-4. **프레임워크 재판단** — Phaser 전환은 보류. 실제 애니메이션 에셋이 들어오고
-   캐릭터당 상태가 여러 개 필요해지면 그때 다시 봅니다.
+   기존에 쌓인 중복 닉네임이 정리되고 트리거가 걸린다. (2026-08-13 기준 미실행)
+4. **프레임워크 재판단** — Phaser 전환은 보류. 캐릭터마다 애니메이션 상태가 여러 개
+   필요해지면 그때 다시 본다. 지금 구조(문자열 도트 → 오프스크린 베이크)로도 충분하다.
 
 ## 환경 메모 (Windows)
 

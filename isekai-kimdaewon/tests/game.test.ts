@@ -6,8 +6,10 @@ import { CHAPTERS, FIRST_TOOL_CHAPTER } from "../src/data/chapters";
 import { CODEX, ENEMY_DEF } from "../src/data/enemies";
 import { BATT_MAX, TOOL_IDS, WEAPONS } from "../src/data/weapons";
 import { UP_MAX } from "../src/data/upgrades";
+import { PAL, SPRITES } from "../src/assets/sprites";
+import { blit, sprite } from "../src/assets/bake";
 import { input, keys, touch } from "../src/core/inputState";
-import { beginChapter, curWeapon, finishRun, gotoCard, newGame, setScene, state, stat, timeBonus } from "../src/core/state";
+import { beginChapter, curWeapon, finishRun, gotoCard, newGame, setScene, stageProgress, state, stat, timeBonus } from "../src/core/state";
 import { getBest } from "../src/core/save";
 import { buyUpgrade } from "../src/systems/shop";
 import { fetchRanking, rank, rankOn, submitScore } from "../src/systems/ranking";
@@ -203,6 +205,13 @@ describe("무기와 배터리", () => {
     const tool = state.items.find((i) => i.type === "tool");
     expect(tool).toBeTruthy();
     expect(WEAPONS[tool!.tool!]).toBeTruthy();
+  });
+
+  it("마왕성에는 배터리 보급이 놓인다 (렌치로만 보스를 깎게 두지 않는다)", () => {
+    startChapter(BOSS_CH);
+    expect(state.items.filter((i) => i.type === "batt").length).toBeGreaterThanOrEqual(2);
+    // 전동공구가 없이 도착했다면 한 자루 준다
+    expect(state.items.some((i) => i.type === "tool")).toBe(true);
   });
 
   it("모든 전동공구는 렌치보다 강하고 배터리를 쓴다", () => {
@@ -474,6 +483,83 @@ describe("스테이지 카드", () => {
     run(60 * 4);
     expect(state.seen.has("walker")).toBe(true);
     expect(state.seen.has("spore")).toBe(true);
+  });
+});
+
+describe("도트 스프라이트", () => {
+  it("모든 스프라이트의 행 길이가 같고 팔레트에 없는 글자를 쓰지 않는다", () => {
+    for (const [id, def] of Object.entries(SPRITES)) {
+      const cols = def.rows[0].length;
+      expect(cols, `${id} 는 비어 있으면 안 된다`).toBeGreaterThan(0);
+      expect(Number.isInteger(def.scale) && def.scale > 0, `${id} 의 scale 은 양의 정수`).toBe(true);
+      for (const [y, row] of def.rows.entries()) {
+        expect(row.length, `${id} 의 ${y}행 길이`).toBe(cols);
+        for (const ch of row) {
+          expect(ch === "." || ch in PAL, `${id} 의 알 수 없는 글자 "${ch}"`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("적 종류마다 스프라이트가 하나씩 있다", () => {
+    for (const t of Object.keys(ENEMY_DEF) as EnemyType[]) {
+      expect(SPRITES[t], `${t} 스프라이트 없음`).toBeDefined();
+    }
+  });
+
+  it("캔버스를 못 만드는 환경에서는 폴백으로 넘어간다 (터지지 않는다)", () => {
+    expect(sprite("hero")).toBeNull();
+    expect(blit(fakeCtx, "hero", 0, 0)).toBe(false);
+  });
+});
+
+describe("스테이지 진행도", () => {
+  it("보급 스테이지는 모은 보급품 비율만큼 찬다", () => {
+    startChapter(0);
+    expect(state.spawn0).toBe(0);
+    expect(stageProgress()).toBe(0);
+    state.player.supplies = 3;
+    expect(stageProgress()).toBeCloseTo(0.5);
+    state.player.supplies = CHAPTERS[0].need!;
+    expect(stageProgress()).toBe(1);
+  });
+
+  it("전투 스테이지는 처치 비율만큼 차고, 분열해도 0~1 을 벗어나지 않는다", () => {
+    startChapter(2);
+    const n = state.spawn0;
+    expect(n).toBeGreaterThan(0);
+    expect(stageProgress()).toBe(0);
+    state.enemies.splice(0, Math.floor(n / 2));
+    expect(stageProgress()).toBeCloseTo(1 - Math.ceil(n / 2) / n);
+
+    // 분열로 초기 스폰보다 많아져도 음수가 되지 않는다
+    for (let i = 0; i < n * 2; i++) state.enemies.push(state.enemies[0]);
+    expect(stageProgress()).toBe(0);
+
+    state.enemies.length = 0;
+    expect(stageProgress()).toBe(1);
+  });
+
+  it("보스 스테이지는 보스 체력이 깎인 만큼 찬다", () => {
+    startChapter(BOSS_CH);
+    const b = state.enemies.find((e) => e.type === "boss")!;
+    expect(stageProgress()).toBe(0);
+    b.hp = b.maxhp / 4;
+    expect(stageProgress()).toBeCloseTo(0.75);
+  });
+
+  it("포털이 열리면 그 스테이지는 다 찬 것으로 본다", () => {
+    startChapter(1);
+    state.portal = { x: 100, y: 100, r: 22, t: 0 };
+    expect(stageProgress()).toBe(1);
+  });
+
+  it("모든 화면에서 진행도 트랙을 그려도 터지지 않는다", () => {
+    for (const s of ["title", "card", "shop", "rank", "play", "dead", "ending"] as const) {
+      startChapter(1);
+      setScene(s, 0);
+      expect(() => draw()).not.toThrow();
+    }
   });
 });
 
