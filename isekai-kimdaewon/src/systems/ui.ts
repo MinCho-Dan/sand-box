@@ -15,10 +15,10 @@ export function sceneButtons(): UiButton[] {
   if (s === "title") {
     const out: UiButton[] = [
       // 키 아트를 최대한 가리지 않도록 화면 맨 아래에 붙인다
-      { id: "start", kind: "go", x: W / 2 - 110, y: 848, w: 220, h: 56, label: "게임 시작" },
-      { id: "sound", kind: "sound", x: W / 2 + 6, y: 912, w: 160, h: 40, label: AUDIO_LABEL[getAudioMode()] },
+      { id: "start", kind: "go", x: W / 2 - 110, y: 850, w: 220, h: 54, label: "게임 시작" },
+      { id: "sound", kind: "sound", x: W / 2 + 6, y: 914, w: 160, h: 40, label: AUDIO_LABEL[getAudioMode()] },
     ];
-    if (rankOn()) out.push({ id: "rank", kind: "rank", x: W / 2 - 166, y: 912, w: 160, h: 40, label: "랭킹 보기" });
+    if (rankOn()) out.push({ id: "rank", kind: "rank", x: W / 2 - 166, y: 914, w: 160, h: 40, label: "랭킹 보기" });
     else out[1].x = W / 2 - 80;
     return out;
   }

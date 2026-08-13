@@ -13,7 +13,7 @@ import { drawButtons } from "./hud";
 
 const SCORE_RULE = "점수 = 처치 + 보급품 + 클리어 시간 보너스";
 /** 타이틀 하단 어둠막이 시작되는 높이 — 버튼과 안내가 이 아래에 올라간다 */
-const SCRIM_Y = 808;
+const SCRIM_Y = 836;
 
 /** 결과 화면의 점수 내역표 */
 function drawScoreBreakdown(y: number, cleared: boolean): number {
@@ -68,33 +68,33 @@ export function drawTitle(touchOn: boolean): void {
 
   // 아래쪽에 버튼이 올라가므로 어둡게 깔아 글자가 읽히게 한다
   const g = ctx.createLinearGradient(0, SCRIM_Y, 0, H);
+  // 아트가 화려해서 완만하게 깔면 버튼 글자가 배경 글자와 섞인다. 빠르게 어두워지게 한다.
   g.addColorStop(0, "rgba(8,11,24,0)");
-  g.addColorStop(0.4, "rgba(8,11,24,.80)");
-  g.addColorStop(1, "rgba(8,11,24,.97)");
+  g.addColorStop(0.16, "rgba(8,11,24,.88)");
+  g.addColorStop(1, "rgba(8,11,24,.98)");
   ctx.fillStyle = g;
   ctx.fillRect(0, SCRIM_Y, W, H - SCRIM_Y);
 
+  // 문구는 전부 화면 위쪽에 띄운다. 키 아트의 로고가 아래쪽 3분의 1을 쓰고 있어서
+  // 아래에 뭘 얹으면 "김대원" 글자를 파먹는다.
   ctx.textAlign = "center";
-  ctx.fillStyle = blink() ? COL.hero : COL.heroDk;
-  ctx.font = "bold 13px sans-serif";
-  ctx.fillText("★ 지금 다운로드하세요 ★", W / 2, 834);
-
-  // 최고 점수는 아트 구도를 건드리지 않게 상단에 작은 띠로 띄운다
-  if (getBest() > 0) {
-    const label = "최고 점수  " + fmt(getBest());
-    ctx.font = "bold 14px sans-serif";
-    const w = 150;
-    ctx.fillStyle = "rgba(8,11,24,.72)";
-    ctx.fillRect(W / 2 - w / 2, 22, w, 30);
-    ctx.strokeStyle = UI.lineDim;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(W / 2 - w / 2 + 0.5, 22.5, w - 1, 29);
-    ctx.fillStyle = COL.hero;
-    ctx.fillText(label, W / 2, 42);
-  }
+  pill("★ 지금 다운로드하세요 ★", 22, 168, blink() ? COL.hero : COL.heroDk);
+  if (getBest() > 0) pill("최고 점수  " + fmt(getBest()), 60, 152, COL.hero);
 
   drawButtons();
   void touchOn;
+}
+
+/** 아트 위에 얹는 작은 반투명 명패 — 배경이 밝아도 글자가 읽히게 */
+function pill(label: string, y: number, w: number, color: string): void {
+  ctx.fillStyle = "rgba(8,11,24,.72)";
+  ctx.fillRect(W / 2 - w / 2, y, w, 28);
+  ctx.strokeStyle = UI.lineDim;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(W / 2 - w / 2 + 0.5, y + 0.5, w - 1, 27);
+  ctx.fillStyle = color;
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText(label, W / 2, y + 19);
 }
 
 /** 키 아트 파일이 없을 때의 타이틀 — 허공에 뜬 동그란 유리창 */

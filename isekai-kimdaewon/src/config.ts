@@ -47,8 +47,8 @@ export const UI = {
   line: "rgba(255,215,94,.55)",
   lineDim: "rgba(255,215,94,.20)",
   /** 버튼 바탕 — 금색을 얇게 깔면 올리브색으로 탁해져서 남색 판을 깐다 */
-  btn: "rgba(28,40,78,.88)",
-  btnOff: "rgba(18,24,44,.62)",
+  btn: "rgba(22,32,66,.96)",
+  btnOff: "rgba(16,22,42,.85)",
   off: "rgba(38,50,86,.45)",
   offLine: "rgba(90,108,166,.28)",
   offText: "#55618f",
