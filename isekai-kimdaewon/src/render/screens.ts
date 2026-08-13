@@ -117,7 +117,7 @@ function drawTitleFallback(): void {
 
   // 허공에 뜬 동그란 유리창
   ctx.save();
-  ctx.translate(W / 2, 290);
+  ctx.translate(W / 2, 400);
   for (let i = 4; i >= 0; i--) {
     ctx.globalAlpha = 0.06 + i * 0.02;
     ctx.fillStyle = "#8ce07a";
@@ -172,13 +172,13 @@ function drawTitleFallback(): void {
   ctx.textAlign = "center";
   ctx.fillStyle = COL.dim;
   ctx.font = "13px sans-serif";
-  ctx.fillText("단기 4361년 · 인류의 마지막 생존자", W / 2, 440);
+  ctx.fillText("단기 4361년 · 인류의 마지막 생존자", W / 2, 590);
   ctx.fillStyle = COL.hero;
   ctx.font = "bold 38px sans-serif";
-  ctx.fillText("이세계전사 김대원", W / 2, 490);
+  ctx.fillText("이세계전사 김대원", W / 2, 644);
   ctx.fillStyle = UI.offText;
   ctx.font = "12px sans-serif";
-  ctx.fillText(SCORE_RULE, W / 2, 528);
+  ctx.fillText(SCORE_RULE, W / 2, 682);
 }
 
 /* ── 스토리 ── */
