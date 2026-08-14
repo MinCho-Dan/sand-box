@@ -1,8 +1,8 @@
 import { BATT_MAX } from "../data/weapons";
 import { COL, CTRL_H, H, HUD_H, UI, W } from "../config";
-import { UP_COST, UP_MAX } from "../data/upgrades";
+import { UP_MAX, upCostAt } from "../data/upgrades";
 import { chapterLabel, curWeapon, currentChapter, stageProgress, state, stat } from "../core/state";
-import { canBuy } from "../systems/shop";
+import { canBuy, levelCapped } from "../systems/shop";
 import { sceneButtons } from "../systems/ui";
 import type { UpgradeId } from "../types";
 import { bar, blink, ctx, ready, stageTrack } from "./ctx";
@@ -97,9 +97,11 @@ export function drawButtons(): void {
     ctx.fillStyle = on ? COL.hero : UI.offText;
 
     if (b.kind === "buy") {
-      const lv = state.up[b.id as UpgradeId];
+      const id = b.id as UpgradeId;
+      const lv = state.up[id];
       ctx.font = "bold 15px sans-serif";
-      ctx.fillText(lv >= UP_MAX ? "MAX" : "◆ " + UP_COST[lv], b.x + b.w / 2, b.y + b.h / 2 + 5);
+      const maxed = levelCapped(id) && lv >= UP_MAX;
+      ctx.fillText(maxed ? "MAX" : "◆ " + upCostAt(lv), b.x + b.w / 2, b.y + b.h / 2 + 5);
     } else {
       const label = b.label ?? (b.kind === "go" ? "출발" : "다시 시작");
       const big = b.h >= 58;

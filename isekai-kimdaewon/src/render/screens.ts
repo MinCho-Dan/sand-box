@@ -7,7 +7,7 @@ import { getBest } from "../core/save";
 import { chapterLabel, currentChapter, newEnemiesFor, state } from "../core/state";
 import { SUPPLY_SCORE } from "../systems/items";
 import { rank, RANK_LIMIT } from "../systems/ranking";
-import { SHOP_ROW_H, SHOP_ROW_Y } from "../systems/shop";
+import { levelCapped, SHOP_ROW_H, SHOP_ROW_Y } from "../systems/shop";
 import { blink, clearScreen, ctx, fmt, stageTrack, tapPrompt } from "./ctx";
 import { drawButtons } from "./hud";
 
@@ -323,6 +323,12 @@ export function drawShop(touchOn: boolean): void {
     for (let k = 0; k < UP_MAX; k++) {
       ctx.fillStyle = k < lv ? COL.hero : UI.off;
       ctx.fillRect(32 + k * 18, y + 20, 13, 5);
+    }
+    // 상한이 없는 능력치(무한모드의 체력·공격력)는 점 4개로 못 보여주니 레벨 숫자를 덧붙인다
+    if (!levelCapped(u.id) && lv > UP_MAX) {
+      ctx.fillStyle = COL.hero;
+      ctx.font = "bold 10px sans-serif";
+      ctx.fillText(`Lv.${lv}`, 32 + UP_MAX * 18 + 6, y + 25);
     }
   });
 

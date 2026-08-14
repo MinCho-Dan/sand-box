@@ -5,7 +5,7 @@ import { AH, CTRL_H, H, HUD_H, MH, MW, SUPABASE_ANON_KEY, SUPABASE_URL, TS, W } 
 import { CHAPTERS, FIRST_TOOL_CHAPTER } from "../src/data/chapters";
 import { CODEX, ENEMY_DEF } from "../src/data/enemies";
 import { BATT_MAX, TOOL_IDS, WEAPONS } from "../src/data/weapons";
-import { UP_MAX } from "../src/data/upgrades";
+import { UP_MAX, upCostAt } from "../src/data/upgrades";
 import { PAL, SPRITES } from "../src/assets/sprites";
 import { blit, sprite } from "../src/assets/bake";
 import { input, keys, touch } from "../src/core/inputState";
@@ -520,6 +520,35 @@ describe("상점", () => {
     expect(buyUpgrade("dash")).toBe(false);
     state.gems = 0;
     expect(buyUpgrade("hp")).toBe(false);
+  });
+
+  it("무한모드에서는 체력·공격력만 상한이 없고, 나머지는 스토리와 같은 상한을 유지한다", () => {
+    startEndless();
+    state.gems = 1_000_000;
+
+    // 체력·공격력: 레벨 4를 넘어도 계속 살 수 있다
+    for (let i = 0; i < UP_MAX; i++) buyUpgrade("hp");
+    expect(state.up.hp).toBe(UP_MAX);
+    expect(buyUpgrade("hp")).toBe(true);
+    expect(state.up.hp).toBe(UP_MAX + 1);
+    expect(upCostAt(UP_MAX)).toBeGreaterThan(upCostAt(UP_MAX - 1)); // 비용도 계속 오른다
+
+    // 회피는 무한모드에서도 4레벨에서 막힌다
+    for (let i = 0; i < UP_MAX; i++) buyUpgrade("dash");
+    expect(state.up.dash).toBe(UP_MAX);
+    expect(buyUpgrade("dash")).toBe(false);
+  });
+
+  it("스토리 모드에서는 체력·공격력도 4레벨에서 막힌다 (회귀)", () => {
+    newGame();
+    state.gems = 1_000_000;
+    for (let i = 0; i < UP_MAX; i++) buyUpgrade("atk");
+    expect(state.up.atk).toBe(UP_MAX);
+    expect(buyUpgrade("atk")).toBe(false);
+  });
+
+  it("upCostAt 은 레벨 0~3 에서 기존 UP_COST 값과 정확히 같다", () => {
+    expect([0, 1, 2, 3].map(upCostAt)).toEqual([10, 18, 30, 46]);
   });
 });
 

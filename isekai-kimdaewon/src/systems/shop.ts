@@ -1,5 +1,5 @@
 import { H, W } from "../config";
-import { UPGRADES, UP_COST, UP_MAX } from "../data/upgrades";
+import { UNCAPPED_IN_ENDLESS, UPGRADES, UP_MAX, upCostAt } from "../data/upgrades";
 import { state, stat } from "../core/state";
 import type { UiButton, UpgradeId } from "../types";
 import { clamp } from "../core/util";
@@ -7,8 +7,11 @@ import { clamp } from "../core/util";
 export const SHOP_ROW_Y = 250;
 export const SHOP_ROW_H = 96;
 
-export const upCost = (id: UpgradeId) => UP_COST[state.up[id]];
-export const canBuy = (id: UpgradeId) => state.up[id] < UP_MAX && state.gems >= upCost(id);
+export const upCost = (id: UpgradeId) => upCostAt(state.up[id]);
+export const levelCapped = (id: UpgradeId): boolean =>
+  !(state.mode === "endless" && UNCAPPED_IN_ENDLESS.includes(id));
+export const canBuy = (id: UpgradeId) =>
+  (!levelCapped(id) || state.up[id] < UP_MAX) && state.gems >= upCost(id);
 
 export function buyUpgrade(id: UpgradeId): boolean {
   if (!canBuy(id)) return false;

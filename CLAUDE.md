@@ -19,7 +19,7 @@
 git clone https://github.com/MinCho-Dan/sand-box.git
 cd sand-box/isekai-kimdaewon
 npm ci
-npm test        # vitest 63개
+npm test        # vitest 66개
 npm run dev     # 개발 서버
 ```
 
@@ -127,6 +127,17 @@ tests/           vitest
 호출은 전부 `state.mode === "story"` 로 감싼다. 무한모드 체력·속도 배율은 **상한이 없다**
 (`hpMult = 1 + i*0.05`, `spdMult = 1 + i*0.02`) — 언젠가 죽는 게 무한모드의 요점이라
 인위적인 천장을 두지 않기로 했다.
+
+**상점 업그레이드 상한도 무한모드에서는 일부만 풀린다.** 적이 끝없이 세지니 받아치는
+쪽(체력·공격력)도 끝없이 오를 수 있어야 한다는 요청으로, `data/upgrades.ts` 의
+`UNCAPPED_IN_ENDLESS = ["hp", "atk"]` 에 든 능력치만 무한모드에서 레벨 상한(`UP_MAX=4`)이
+없다. 회피·공속·허기는 스토리와 무한 둘 다 4레벨에서 막힌다(별개 요청으로 정함 —
+특히 회피는 레벨이 오를수록 쿨다운이 줄고 무적시간이 늘어서, 상한 없이 풀면 무적시간이
+쿨다운을 넘어 사실상 무적이 되는 경계가 있다. 4레벨에서는 안전하지만 그 이상은 검증 안 함).
+비용은 `upCostAt(level) = 2*level² + 6*level + 10` 하나로 통일했다 — 레벨 0~3 에서
+기존 `UP_COST` 배열과 정확히 같은 값이 나오게 맞춘 것이라, 레벨 4 이후로도 자연스럽게
+이어진다. 어느 능력치가 지금 상한이 걸려 있는지는 `systems/shop.ts` 의 `levelCapped(id)`
+하나로 판단한다 — canBuy·HUD·상점 화면이 전부 이 함수를 거친다.
 
 **랭킹은 스토리/무한모드가 완전히 분리돼 있다.** Supabase `scores` 테이블에 `mode`
 컬럼이 있고, 닉네임당 최고점은 `(nick, mode)` 조합 기준으로 유지된다(트리거·유니크
