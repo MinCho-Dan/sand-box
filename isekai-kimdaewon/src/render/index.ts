@@ -3,7 +3,7 @@ import { state } from "../core/state";
 import { touch } from "../core/inputState";
 import { rnd } from "../core/util";
 import { clearScreen, ctx } from "./ctx";
-import { drawButtons, drawHUD, drawOverlays } from "./hud";
+import { drawButtons, drawControlBand, drawHUD, drawOverlays } from "./hud";
 import { drawCard, drawDead, drawEnding, drawRank, drawShop, drawStory, drawTitle } from "./screens";
 import { drawBullets, drawEnemies, drawItems, drawMap, drawParts, drawPlayer, drawPortal } from "./world";
 
@@ -56,6 +56,7 @@ export function draw(): void {
   ctx.restore();
 
   drawHUD();
+  drawControlBand(on);
   drawOverlays(on);
   if (state.scene === "dead") drawDead();
   else if (state.scene === "play") void drawButtons; // 플레이 중에는 캔버스 버튼이 없다

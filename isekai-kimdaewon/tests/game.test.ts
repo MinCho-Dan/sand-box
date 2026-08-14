@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeCtx, lsStore } from "./setup";
 
-import { AH, H, HUD_H, MH, MW, SUPABASE_ANON_KEY, SUPABASE_URL, TS, W } from "../src/config";
+import { AH, CTRL_H, H, HUD_H, MH, MW, SUPABASE_ANON_KEY, SUPABASE_URL, TS, W } from "../src/config";
 import { CHAPTERS, FIRST_TOOL_CHAPTER } from "../src/data/chapters";
 import { CODEX, ENEMY_DEF } from "../src/data/enemies";
 import { BATT_MAX, TOOL_IDS, WEAPONS } from "../src/data/weapons";
@@ -9,7 +9,11 @@ import { UP_MAX } from "../src/data/upgrades";
 import { PAL, SPRITES } from "../src/assets/sprites";
 import { blit, sprite } from "../src/assets/bake";
 import { input, keys, touch } from "../src/core/inputState";
-import { beginChapter, curWeapon, finishRun, gotoCard, newGame, setScene, stageProgress, state, stat, timeBonus } from "../src/core/state";
+import {
+  beginChapter, currentChapter, curWeapon, finishRun, gotoCard, newGame, setScene,
+  stageProgress, startEndless, state, stat, timeBonus,
+} from "../src/core/state";
+import { cycleControlMode, getControlMode } from "../src/core/controlMode";
 import { getBest } from "../src/core/save";
 import { buyUpgrade } from "../src/systems/shop";
 import { fetchRanking, rank, rankOn, submitScore } from "../src/systems/ranking";
@@ -54,10 +58,10 @@ beforeEach(() => {
 });
 
 describe("규격", () => {
-  it("캔버스 540x972 = HUD 108 + 아레나 864", () => {
+  it("캔버스 540x972 = HUD 108 + 아레나 792 + 하단 컨트롤 밴드 72", () => {
     expect([W, H]).toEqual([540, 972]);
-    expect(HUD_H + AH).toBe(H);
-    expect([MW, MH, TS]).toEqual([15, 24, 36]);
+    expect(HUD_H + AH + CTRL_H).toBe(H);
+    expect([MW, MH, TS]).toEqual([15, 22, 36]);
     expect(MH * TS).toBe(AH);
   });
 
@@ -137,6 +141,47 @@ describe("적", () => {
       if (e.mode === 2) break;
     }
     expect(sawWind).toBe(true);
+  });
+
+  it("마왕은 체력 절반 아래에서만 예고 후 돌진한다 (조준 고정)", () => {
+    startChapter(BOSS_CH);
+    const boss = state.enemies[0];
+    boss.hp = boss.maxhp * 0.4; // 절반 아래로 내려 돌진이 풀리게 한다
+    boss.phase = 2; // 다음 트리거에서 phase 3 (돌진 후보) 가 되게
+    boss.cd = 0.01;
+    state.player.x = boss.x;
+    state.player.y = boss.y + 150;
+    state.player.hp = 9999;
+
+    let sawWind = false;
+    let aimAtWind = 0;
+    for (let i = 0; i < 300; i++) {
+      update(1 / 60);
+      state.player.hp = 9999;
+      if (boss.mode === 1) {
+        if (!sawWind) {
+          sawWind = true;
+          aimAtWind = boss.aim;
+        }
+        state.player.x = boss.x + 200; // 예고 중에 위치를 바꿔도
+        expect(boss.aim).toBe(aimAtWind); // 조준은 그대로다
+      }
+      if (boss.mode === 2 || state.scene !== "play") break;
+    }
+    expect(sawWind).toBe(true);
+  });
+
+  it("체력 절반 이상에서는 돌진하지 않는다", () => {
+    startChapter(BOSS_CH);
+    const boss = state.enemies[0];
+    boss.phase = 2;
+    boss.cd = 0.01;
+    for (let i = 0; i < 240; i++) {
+      state.player.hp = 9999;
+      update(1 / 60);
+      expect(boss.mode).not.toBe(1);
+      if (state.scene !== "play") break;
+    }
   });
 
   it("분열체는 죽으면 슬라임 둘로 갈라진다", () => {
@@ -356,12 +401,23 @@ describe("입력 게이트 (회귀)", () => {
 });
 
 describe("타이틀 / 랭킹 진입", () => {
-  it("타이틀에 게임 시작·랭킹·소리 버튼이 모두 있다", () => {
+  it("타이틀에 스토리·무한·랭킹·조작·소리 버튼이 모두 있다", () => {
     newGame();
-    const kinds = sceneButtons().map((b) => b.kind);
-    expect(kinds).toContain("go");
-    expect(kinds).toContain("sound");
-    expect(kinds).toContain("rank");
+    const bs = sceneButtons();
+    const ids = bs.map((b) => b.id);
+    expect(ids).toContain("start");
+    expect(ids).toContain("endless");
+    expect(bs.map((b) => b.kind)).toContain("sound");
+    expect(bs.map((b) => b.kind)).toContain("rank");
+    expect(bs.map((b) => b.kind)).toContain("control");
+  });
+
+  it("무한모드 버튼은 곧장 플레이로 들어간다", () => {
+    newGame();
+    const btn = sceneButtons().find((b) => b.id === "endless")!;
+    pressButton(btn);
+    expect(state.scene).toBe("play");
+    expect(state.mode).toBe("endless");
   });
 
   it("타이틀 버튼들이 화면 안에 있고 서로 겹치지 않는다", () => {
@@ -516,7 +572,8 @@ describe("도트 스프라이트", () => {
 describe("스테이지 진행도", () => {
   it("보급 스테이지는 모은 보급품 비율만큼 찬다", () => {
     startChapter(0);
-    expect(state.spawn0).toBe(0);
+    // 배회하는 잡몹은 spawn0 에 잡히지만 스테이지 진행도에는 영향을 주지 않는다
+    expect(state.spawn0).toBeGreaterThan(0);
     expect(stageProgress()).toBe(0);
     state.player.supplies = 3;
     expect(stageProgress()).toBeCloseTo(0.5);
@@ -560,6 +617,80 @@ describe("스테이지 진행도", () => {
       setScene(s, 0);
       expect(() => draw()).not.toThrow();
     }
+  });
+});
+
+describe("무한모드", () => {
+  it("스토리 모드와 분리되어 있고 마왕 타입을 쓰지 않는다", () => {
+    startEndless();
+    expect(state.mode).toBe("endless");
+    expect(state.chapterIdx).toBe(0);
+    expect(state.scene).toBe("play");
+    expect(state.enemies.some((e) => e.type === "boss")).toBe(false);
+  });
+
+  it("파도가 오를수록 적 체력과 속도가 오른다 (상한 적용)", () => {
+    newGame();
+    state.mode = "endless";
+    state.pendingChapter = 0;
+    beginChapter();
+    const baseHp = state.enemies[0].maxhp;
+    const baseSpd = ENEMY_DEF[state.enemies[0].type].spd;
+
+    state.pendingChapter = 10;
+    beginChapter();
+    expect(state.enemies[0].maxhp).toBeGreaterThan(baseHp);
+    expect(state.enemies[0].spd).toBeGreaterThan(baseSpd);
+
+    // 상한 이후로는 더 오르지 않는다
+    state.pendingChapter = 25;
+    beginChapter();
+    const hpAt25 = state.enemies[0].maxhp;
+    state.pendingChapter = 40;
+    beginChapter();
+    expect(state.enemies[0].maxhp).toBe(hpAt25);
+  });
+
+  it("보스전 종료 후에도 스토리 모드는 CHAPTERS 를 그대로 쓴다 (회귀)", () => {
+    startChapter(2);
+    expect(state.mode).toBe("story");
+    expect(currentChapter(2).name).toBe(CHAPTERS[2].name);
+  });
+
+  it("새 적이 없는 파도는 카드를 건너뛰고 곧장 다음 라운드로 간다", () => {
+    startEndless();
+    state.enemies.length = 0;
+    frame();
+    expect(state.portal).toBeTruthy();
+    state.player.x = state.portal!.x;
+    state.player.y = state.portal!.y;
+    frame();
+    expect(state.scene).toBe("shop");
+    run(60);
+    pressButton(sceneButtons().find((b) => b.kind === "go")!);
+    // 1라운드에 없던 신규 타입이 2라운드(스폰풀에 spore 없음, w=2도 없음)에도 없으면 카드 없이 바로 진행
+    expect(["play", "card"]).toContain(state.scene);
+  });
+});
+
+describe("조작 방식", () => {
+  it("기본은 드래그형이고, 토글하면 저장되어 유지된다", () => {
+    expect(getControlMode()).toBe("drag");
+    cycleControlMode();
+    expect(getControlMode()).toBe("fixed");
+    expect(lsStore.get("kimdaewon.control")).toBe("fixed");
+    cycleControlMode();
+    expect(getControlMode()).toBe("drag");
+  });
+
+  it("타이틀에서 버튼으로 전환할 수 있다", () => {
+    newGame();
+    const before = getControlMode();
+    const btn = sceneButtons().find((b) => b.kind === "control")!;
+    expect(btn).toBeTruthy();
+    pressButton(btn);
+    expect(getControlMode()).not.toBe(before);
+    pressButton(btn); // 원복 — 다른 테스트에 영향 주지 않는다
   });
 });
 

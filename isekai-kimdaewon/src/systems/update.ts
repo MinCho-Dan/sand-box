@@ -1,10 +1,9 @@
-import { CHAPTERS } from "../data/chapters";
 import { sfx } from "../audio";
 import type { Mood } from "../audio";
 import { stepParticles } from "../core/fx";
 import { freeSpots, nearestFree } from "../core/map";
 import { MW } from "../config";
-import { beginChapter, finishRun, gotoShop, markSeen, setScene, state, toast } from "../core/state";
+import { beginChapter, currentChapter, finishRun, gotoShop, markSeen, setScene, state, toast } from "../core/state";
 import { dist } from "../core/util";
 import { updateBullets, updatePlayer } from "./combat";
 import { updateEnemies } from "./enemies";
@@ -13,7 +12,7 @@ import { updateItems } from "./items";
 export function currentMood(): Mood {
   const s = state.scene;
   if (s === "play" || s === "bossdown") {
-    return CHAPTERS[state.chapterIdx]?.kind === "boss" ? "boss" : "play";
+    return currentChapter(state.chapterIdx).kind === "boss" ? "boss" : "play";
   }
   return "menu";
 }
@@ -48,7 +47,7 @@ export function update(dt: number): void {
   }
 
   const p = state.player;
-  const ch = CHAPTERS[state.chapterIdx];
+  const ch = currentChapter(state.chapterIdx);
 
   updatePlayer(dt);
   updateItems(dt);
@@ -74,7 +73,7 @@ export function update(dt: number): void {
   } else {
     state.portal.t += dt;
     if (dist(p, state.portal) < p.r + state.portal.r) {
-      if (state.chapterIdx === 0) {
+      if (state.mode === "story" && state.chapterIdx === 0) {
         state.storyIdx = 1;
         setScene("story", 0.7);
       } else {

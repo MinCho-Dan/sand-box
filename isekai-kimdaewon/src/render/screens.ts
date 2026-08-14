@@ -4,7 +4,7 @@ import { CHAPTERS, ENDING_TEXT, STORY } from "../data/chapters";
 import { CODEX, ENEMY_DEF } from "../data/enemies";
 import { UPGRADES, UP_MAX } from "../data/upgrades";
 import { getBest } from "../core/save";
-import { newEnemiesFor, state } from "../core/state";
+import { chapterLabel, currentChapter, newEnemiesFor, state } from "../core/state";
 import { SUPPLY_SCORE } from "../systems/items";
 import { rank, RANK_LIMIT } from "../systems/ranking";
 import { SHOP_ROW_H, SHOP_ROW_Y } from "../systems/shop";
@@ -201,21 +201,24 @@ export function drawStory(touchOn: boolean): void {
 /* ── 스테이지 카드 ── */
 export function drawCard(touchOn: boolean): void {
   const i = state.pendingChapter;
-  const ch = CHAPTERS[i];
+  const ch = currentChapter(i);
+  const story = state.mode === "story";
   clearScreen(COL.bg);
   ctx.textAlign = "center";
 
   ctx.fillStyle = COL.dim;
   ctx.font = "bold 15px sans-serif";
-  ctx.fillText(`STAGE ${i + 1} / ${CHAPTERS.length}`, W / 2, 248);
+  ctx.fillText(chapterLabel(i), W / 2, 248);
   ctx.fillStyle = COL.hero;
   ctx.font = "bold 30px sans-serif";
   ctx.fillText(ch.name, W / 2, 290);
 
-  stageTrack(90, 308, W - 180, 8, i, 0);
-  ctx.fillStyle = COL.dim;
-  ctx.font = "11px sans-serif";
-  ctx.fillText(i === CHAPTERS.length - 1 ? "마지막 스테이지" : `마왕성까지 ${CHAPTERS.length - 1 - i}스테이지`, W / 2, 336);
+  if (story) {
+    stageTrack(90, 308, W - 180, 8, i, 0);
+    ctx.fillStyle = COL.dim;
+    ctx.font = "11px sans-serif";
+    ctx.fillText(i === CHAPTERS.length - 1 ? "마지막 스테이지" : `마왕성까지 ${CHAPTERS.length - 1 - i}스테이지`, W / 2, 336);
+  }
 
   ctx.strokeStyle = UI.lineDim;
   ctx.lineWidth = 1;
@@ -296,10 +299,11 @@ export function drawShop(touchOn: boolean): void {
   ctx.font = "bold 26px sans-serif";
   ctx.fillText("보급 상점", W / 2, 120);
   const nx = state.pendingChapter;
+  const nextCh = currentChapter(nx);
   ctx.fillStyle = COL.dim;
   ctx.font = "12px sans-serif";
-  ctx.fillText(`다음 — STAGE ${nx + 1} / ${CHAPTERS.length} · ${CHAPTERS[nx]?.name ?? ""}`, W / 2, 146);
-  stageTrack(110, 158, W - 220, 6, nx, 0);
+  ctx.fillText(`다음 — ${chapterLabel(nx)} · ${nextCh.name}`, W / 2, 146);
+  if (state.mode === "story") stageTrack(110, 158, W - 220, 6, nx, 0);
   ctx.fillStyle = COL.gem;
   ctx.font = "bold 22px sans-serif";
   ctx.fillText("◆ " + state.gems, W / 2, 190);
@@ -463,10 +467,10 @@ export function drawDead(): void {
   ctx.fillStyle = COL.dim;
   ctx.font = "14px sans-serif";
   ctx.fillText(
-    `STAGE ${state.chapterIdx + 1} / ${CHAPTERS.length} · ${CHAPTERS[state.chapterIdx].name} 에서 쓰러졌다`,
+    `${chapterLabel(state.chapterIdx)} · ${currentChapter(state.chapterIdx).name} 에서 쓰러졌다`,
     W / 2, 234,
   );
-  stageTrack(110, 252, W - 220, 6, state.chapterIdx, 0);
+  if (state.mode === "story") stageTrack(110, 252, W - 220, 6, state.chapterIdx, 0);
 
   const after = drawScoreBreakdown(310, false);
   ctx.textAlign = "center";

@@ -23,29 +23,60 @@ export function updateEnemies(dt: number): void {
     const dp = dist(p, e);
 
     if (d.boss) {
-      e.cd -= dt;
       const hpR = e.hp / e.maxhp;
-      const keep = hpR < 0.5 ? 160 : 205;
-      const mv = dp > keep ? 1 : -0.5;
-      moveEnt(e, Math.cos(toP) * e.spd * mv * dt, Math.sin(toP) * e.spd * mv * dt, g);
-      if (e.cd <= 0) {
-        e.phase = (e.phase + 1) % 3;
-        if (e.phase === 2) {
-          for (let k = 0; k < (hpR < 0.5 ? 3 : 2); k++) {
-            const a = rnd(0, Math.PI * 2);
-            state.enemies.push(makeEnemy("spore", e.x + Math.cos(a) * 46, e.y + Math.sin(a) * 46));
+
+      if (e.mode === 1) {
+        // 돌진 예고 — 조준 고정, 제자리 대기 (charger 와 같은 언어)
+        e.windT -= dt;
+        if (e.windT <= 0) {
+          e.mode = 2;
+          e.rushT = 0.5;
+          sfx("charge");
+        }
+      } else if (e.mode === 2) {
+        const bx = e.x;
+        const by = e.y;
+        const rush = d.rush ?? 520;
+        moveEnt(e, Math.cos(e.aim) * rush * dt, Math.sin(e.aim) * rush * dt, g);
+        e.rushT -= dt;
+        const hitWall = Math.hypot(e.x - bx, e.y - by) < rush * dt * 0.5;
+        if (e.rushT <= 0 || hitWall) {
+          e.mode = 0;
+          e.cd = 1.6;
+          if (hitWall) {
+            burst(state, e.x, e.y, 14, d.color, 200, 0.5);
+            state.shake = Math.max(state.shake, 10);
           }
-          burst(state, e.x, e.y, 20, "#b06cff", 200, 0.5);
-          e.cd = 3.4;
-        } else {
-          const n = hpR < 0.5 ? 12 : 9;
-          const off = rnd(0, Math.PI * 2);
-          for (let k = 0; k < n; k++) {
-            const a = off + (k / n) * Math.PI * 2;
-            state.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 150, vy: Math.sin(a) * 150, r: 6, dmg: 8, life: 5 });
+        }
+      } else {
+        e.cd -= dt;
+        const keep = hpR < 0.5 ? 160 : 205;
+        const mv = dp > keep ? 1 : -0.5;
+        moveEnt(e, Math.cos(toP) * e.spd * mv * dt, Math.sin(toP) * e.spd * mv * dt, g);
+        if (e.cd <= 0) {
+          e.phase = (e.phase + 1) % 4;
+          if (e.phase === 2) {
+            for (let k = 0; k < (hpR < 0.5 ? 3 : 2); k++) {
+              const a = rnd(0, Math.PI * 2);
+              state.enemies.push(makeEnemy("spore", e.x + Math.cos(a) * 46, e.y + Math.sin(a) * 46));
+            }
+            burst(state, e.x, e.y, 20, "#b06cff", 200, 0.5);
+            e.cd = 3.4;
+          } else if (e.phase === 3 && hpR < 0.5) {
+            // 체력 절반 아래에서만 풀리는 돌진 — 조준선을 보고 옆으로 피할 수 있다
+            e.mode = 1;
+            e.windT = 0.42;
+            e.aim = toP;
+          } else {
+            const n = hpR < 0.5 ? 13 : 10;
+            const off = rnd(0, Math.PI * 2);
+            for (let k = 0; k < n; k++) {
+              const a = off + (k / n) * Math.PI * 2;
+              state.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 150, vy: Math.sin(a) * 150, r: 6, dmg: 11, life: 5 });
+            }
+            state.shake = 8;
+            e.cd = hpR < 0.5 ? 1.7 : 2.3;
           }
-          state.shake = 8;
-          e.cd = hpR < 0.5 ? 1.7 : 2.3;
         }
       }
     } else if (d.ranged) {
@@ -125,11 +156,13 @@ export function updateEnemies(dt: number): void {
       }
 
       if (!d.boss) {
+        // food+medkit 폭을 좁혔다 — 허기가 사실상 무료였다는 피드백에 맞춰
+        // 회복 수급도 같이 조여야 자원 압박이 실제로 느껴진다
         const roll = Math.random();
-        if (roll < 0.18) state.items.push({ x: e.x + 14, y: e.y, r: 10, type: "food", t: 0 });
-        else if (roll < 0.28) state.items.push({ x: e.x + 14, y: e.y, r: 10, type: "medkit", t: 0 });
-        else if (roll < 0.5) state.items.push({ x: e.x + 14, y: e.y, r: 10, type: "batt", val: BATT_DROP, t: 0 });
-        else if (roll < 0.55 && state.chapterIdx >= TOOL_DROP_FROM)
+        if (roll < 0.12) state.items.push({ x: e.x + 14, y: e.y, r: 10, type: "food", t: 0 });
+        else if (roll < 0.18) state.items.push({ x: e.x + 14, y: e.y, r: 10, type: "medkit", t: 0 });
+        else if (roll < 0.4) state.items.push({ x: e.x + 14, y: e.y, r: 10, type: "batt", val: BATT_DROP, t: 0 });
+        else if (roll < 0.45 && state.chapterIdx >= TOOL_DROP_FROM)
           state.items.push({
             x: e.x + 14, y: e.y, r: 12, type: "tool",
             tool: TOOL_IDS[Math.floor(Math.random() * TOOL_IDS.length)], t: 0,

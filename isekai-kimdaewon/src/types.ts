@@ -89,8 +89,11 @@ export interface Portal extends Body {
 
 export type Grid = number[][];
 
+export type RunMode = "story" | "endless";
+
 export interface GameState {
   scene: Scene;
+  mode: RunMode;
   sceneLock: number;
   time: number;
   runTime: number;
@@ -128,7 +131,7 @@ export interface GameState {
 
 export interface UiButton {
   id: string;
-  kind: "buy" | "go" | "restart" | "rank" | "close" | "sound";
+  kind: "buy" | "go" | "restart" | "rank" | "close" | "sound" | "control";
   x: number;
   y: number;
   w: number;

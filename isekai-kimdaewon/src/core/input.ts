@@ -1,8 +1,16 @@
 import { cycleAudio, sfx, wakeAudio } from "../audio";
-import { H, W } from "../config";
+import { CTRL_H, H, W } from "../config";
 import { hitButton, pressButton, sceneButtons, SCENE_TAP } from "../systems/ui";
+import { getControlMode } from "./controlMode";
 import { input, keys, setStickReleaser, touch } from "./inputState";
 import { state } from "./state";
+
+/** 고정 십자키의 화면 위치(밴드 안, 왼쪽) */
+const ANCHOR_X_FRAC = 0.22;
+const ANCHOR_Y_FRAC = 1 - CTRL_H / H / 2;
+/** 디지털 입력이라 아날로그보다 이동 반경이 짧아도 된다 */
+const FIXED_RADIUS_FRAC = 0.06;
+const DRAG_RADIUS_FRAC = 0.1;
 
 /** 씬을 넘기는 입력. 전환 직후 잠금 중이면 통째로 버린다. */
 export function requestAdvance(): boolean {
@@ -83,9 +91,16 @@ export function setupInput(canvas: HTMLCanvasElement): void {
     } catch {
       /* 지원하지 않는 브라우저는 무시 */
     }
-    radius = r.width * 0.1;
-    ox = e.clientX - r.left;
-    oy = e.clientY - r.top;
+    const fixed = getControlMode() === "fixed";
+    radius = r.width * (fixed ? FIXED_RADIUS_FRAC : DRAG_RADIUS_FRAC);
+    if (fixed) {
+      // 손가락이 어디를 짚든 십자키는 항상 같은 자리에 나타난다
+      ox = r.width * ANCHOR_X_FRAC;
+      oy = r.height * ANCHOR_Y_FRAC;
+    } else {
+      ox = e.clientX - r.left;
+      oy = e.clientY - r.top;
+    }
     touch.active = true;
     touch.x = 0;
     touch.y = 0;
@@ -100,13 +115,29 @@ export function setupInput(canvas: HTMLCanvasElement): void {
     let dx = e.clientX - r.left - ox;
     let dy = e.clientY - r.top - oy;
     const d = Math.hypot(dx, dy);
-    if (d > radius) {
-      dx = (dx / d) * radius;
-      dy = (dy / d) * radius;
+
+    if (getControlMode() === "fixed") {
+      // 아날로그가 아니라 8방향 디지털 입력 — 죽은 영역을 벗어나면 가장 가까운 방향으로 고정된다
+      const dead = radius * 0.35;
+      if (d < dead) {
+        dx = 0; dy = 0; touch.x = 0; touch.y = 0;
+      } else {
+        const STEP = Math.PI / 4;
+        const a = Math.round(Math.atan2(dy, dx) / STEP) * STEP;
+        dx = Math.cos(a) * radius;
+        dy = Math.sin(a) * radius;
+        touch.x = Math.cos(a);
+        touch.y = Math.sin(a);
+      }
+    } else {
+      if (d > radius) {
+        dx = (dx / d) * radius;
+        dy = (dy / d) * radius;
+      }
+      touch.x = dx / radius;
+      touch.y = dy / radius;
     }
     place(dx, dy);
-    touch.x = dx / radius;
-    touch.y = dy / radius;
   });
 
   for (const ev of ["pointerup", "pointercancel"]) {

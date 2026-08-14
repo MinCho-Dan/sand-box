@@ -1,6 +1,6 @@
 import { sfx } from "../audio";
 import { COL } from "../config";
-import { CHAPTERS } from "../data/chapters";
+import { SUPPLY_FLAVOR } from "../data/chapters";
 import { BATT_MAX, WEAPONS } from "../data/weapons";
 import { burst, popText } from "../core/fx";
 import { equipTool, state, stat, toast } from "../core/state";
@@ -12,10 +12,12 @@ export const SUPPLY_SCORE = 50;
 export const SUPPLY_GEM = 2;
 /** 마정석이 플레이어 쪽으로 빨려오기 시작하는 거리 */
 const MAGNET_RANGE = 130;
+/** 보급품은 이 거리 안이면 자석처럼 끌려온다 — "그냥 줍기만 한다"는
+ *  지루함의 절반은 선반 사이를 되짚어 가는 데서 온다 */
+const SUPPLY_MAGNET_RANGE = 70;
 
 export function updateItems(dt: number): void {
   const p = state.player;
-  const ch = CHAPTERS[state.chapterIdx];
 
   for (let i = state.items.length - 1; i >= 0; i--) {
     const it = state.items[i];
@@ -26,6 +28,14 @@ export function updateItems(dt: number): void {
       if (d < MAGNET_RANGE) {
         const a = Math.atan2(p.y - it.y, p.x - it.x);
         const s = 90 + (MAGNET_RANGE - d) * 3.2;
+        it.x += Math.cos(a) * s * dt;
+        it.y += Math.sin(a) * s * dt;
+      }
+    } else if (it.type === "supply") {
+      const d = dist(p, it);
+      if (d < SUPPLY_MAGNET_RANGE) {
+        const a = Math.atan2(p.y - it.y, p.x - it.x);
+        const s = 70 + (SUPPLY_MAGNET_RANGE - d) * 2.4;
         it.x += Math.cos(a) * s * dt;
         it.y += Math.sin(a) * s * dt;
       }
@@ -42,7 +52,8 @@ export function updateItems(dt: number): void {
         state.sc.items += SUPPLY_SCORE;
         state.gems += SUPPLY_GEM;
         popText(state, it.x, it.y, it.label ?? "보급품", COL.food, 13);
-        toast(`보급품 ${p.supplies} / ${ch.need ?? 0}`);
+        // 진행 카운터는 HUD 상단에 항상 보이니, 토스트는 서사를 붙이는 데 쓴다
+        toast(SUPPLY_FLAVOR[it.label ?? ""] ?? "보급품을 챙겼다.");
         break;
       case "food":
         p.hunger = clamp(p.hunger + 34, 0, stat.maxfood());

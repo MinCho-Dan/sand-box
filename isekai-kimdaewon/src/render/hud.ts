@@ -1,8 +1,7 @@
 import { BATT_MAX } from "../data/weapons";
-import { COL, H, HUD_H, UI, W } from "../config";
-import { CHAPTERS } from "../data/chapters";
+import { COL, CTRL_H, H, HUD_H, UI, W } from "../config";
 import { UP_COST, UP_MAX } from "../data/upgrades";
-import { curWeapon, stageProgress, state, stat } from "../core/state";
+import { chapterLabel, curWeapon, currentChapter, stageProgress, state, stat } from "../core/state";
 import { canBuy } from "../systems/shop";
 import { sceneButtons } from "../systems/ui";
 import type { UpgradeId } from "../types";
@@ -10,7 +9,7 @@ import { bar, blink, ctx, ready, stageTrack } from "./ctx";
 
 export function drawHUD(): void {
   const p = state.player;
-  const ch = CHAPTERS[state.chapterIdx];
+  const ch = currentChapter(state.chapterIdx);
   const hpR = p.hp / stat.maxhp();
   const fdR = p.hunger / stat.maxfood();
 
@@ -46,15 +45,11 @@ export function drawHUD(): void {
   ctx.fillRect(16, 66, W - 32, 24);
   ctx.textAlign = "left";
   ctx.font = "bold 12px sans-serif";
-  ctx.fillStyle = COL.text;
-  // 자릿수가 고정(스테이지 1~8)이라 고정 좌표로 나눠 그린다
-  ctx.fillText(`STAGE ${state.chapterIdx + 1}`, 26, 83);
   ctx.fillStyle = COL.dim;
-  ctx.font = "11px sans-serif";
-  ctx.fillText(`/ ${CHAPTERS.length}`, 84, 83);
+  const label = chapterLabel(state.chapterIdx);
+  ctx.fillText(label, 26, 83);
   ctx.fillStyle = COL.text;
-  ctx.font = "bold 12px sans-serif";
-  ctx.fillText(ch.name, 118, 83);
+  ctx.fillText(ch.name, 26 + ctx.measureText(label).width + 10, 83);
   ctx.textAlign = "right";
   ctx.font = "12px sans-serif";
   ctx.fillStyle = COL.dim;
@@ -63,8 +58,25 @@ export function drawHUD(): void {
     W - 26, 83,
   );
 
-  // 전체 여정 중 지금 어디쯤인지 — HUD 맨 아래를 가로지르는 트랙
-  stageTrack(16, HUD_H - 10, W - 32, 6, state.chapterIdx, stageProgress());
+  // 전체 여정 중 지금 어디쯤인지 — HUD 맨 아래를 가로지르는 트랙. 무한모드는 끝이 없어 생략한다.
+  if (state.mode === "story") stageTrack(16, HUD_H - 10, W - 32, 6, state.chapterIdx, stageProgress());
+}
+
+/** 아레나 아래 예약된 밴드. 터치 모드에서는 DOM 버튼이 이 위에 올라가고,
+ *  PC 모드에서는 빈 공간이 아깝지 않도록 조작 안내를 채운다. */
+export function drawControlBand(touchOn: boolean): void {
+  const y = H - CTRL_H;
+  ctx.fillStyle = COL.panel;
+  ctx.fillRect(0, y, W, CTRL_H);
+  ctx.fillStyle = UI.lineDim;
+  ctx.fillRect(0, y, W, 1);
+  if (touchOn) return;
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = COL.dim;
+  ctx.font = "11px sans-serif";
+  ctx.fillText("이동 WASD · 방향키", W / 2, y + 28);
+  ctx.fillText("공격 J · 회피 K · 음소거 M", W / 2, y + 48);
 }
 
 export function drawButtons(): void {

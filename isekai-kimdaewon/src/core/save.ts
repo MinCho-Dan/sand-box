@@ -3,6 +3,7 @@
 const BEST_KEY = "kimdaewon.best";
 const NICK_KEY = "kimdaewon.nick";
 const AUDIO_KEY = "kimdaewon.audio";
+const CONTROL_KEY = "kimdaewon.control";
 
 function read(key: string): string | null {
   try {
@@ -35,3 +36,10 @@ export function loadAudioMode(): number {
   return v === 1 || v === 2 ? v : 0;
 }
 export const saveAudioMode = (v: number) => write(AUDIO_KEY, String(v));
+
+/** "fixed" 는 화면 고정 위치에서 8방향으로 스냅되는 디지털 십자키,
+ *  "drag" 는 터치한 자리에 나타나는 기존 아날로그 조이스틱 */
+export function loadControlMode(): "drag" | "fixed" {
+  return read(CONTROL_KEY) === "fixed" ? "fixed" : "drag";
+}
+export const saveControlMode = (v: "drag" | "fixed") => write(CONTROL_KEY, v);

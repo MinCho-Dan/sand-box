@@ -1,6 +1,7 @@
 import { bgmTick } from "./audio";
 import { loadKeyArt } from "./assets/keyart";
 import { H, W } from "./config";
+import { getControlMode } from "./core/controlMode";
 import { setupInput } from "./core/input";
 import { input, touch } from "./core/inputState";
 import { beginChapter, gotoCard, newGame, setScene, state } from "./core/state";
@@ -48,6 +49,7 @@ function loop(now: number): void {
 
   document.body.classList.toggle("playing", state.scene === "play");
   document.body.classList.toggle("touch", touch.on);
+  document.body.classList.toggle("ctrlfixed", getControlMode() === "fixed");
   syncRankForm();
 
   requestAnimationFrame(loop);
@@ -81,6 +83,9 @@ newGame();
 fitCanvas();
 setupInput(canvas);
 setupRankForm();
+// 루프(rAF)가 첫 프레임을 돌기 전에도 고정 십자키 크기가 맞아야 한다 —
+// 그 전까지는 body 에 ctrlfixed 가 안 붙어 드래그용(더 큰) 크기로 그려진다
+document.body.classList.toggle("ctrlfixed", getControlMode() === "fixed");
 addEventListener("resize", fitCanvas);
 draw();
 requestAnimationFrame(loop);

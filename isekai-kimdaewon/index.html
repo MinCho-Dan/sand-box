@@ -59,25 +59,28 @@
   }
   #stick .knob {
     width: 9.6cqw; height: 9.6cqw;
-    background: rgba(143, 227, 192, .46);
-    border: 2px solid rgba(223, 243, 255, .55);
+    background: rgba(255, 215, 94, .46);
+    border: 2px solid rgba(230, 236, 255, .55);
   }
+  /* 고정 십자키는 하단 컨트롤 밴드(72px) 안에 들어가야 해서 훨씬 작다 */
+  body.ctrlfixed #stick .base { width: 11cqw; height: 11cqw; }
+  body.ctrlfixed #stick .knob { width: 5.2cqw; height: 5.2cqw; }
 
   .btn {
     position: absolute;
     aspect-ratio: 1;
     border-radius: 50%;
-    border: 2px solid rgba(143, 227, 192, .4);
-    background: rgba(18, 34, 28, .46);
-    color: #cfe8dd;
-    font-family: inherit; font-weight: bold; font-size: 14px;
+    border: 2px solid rgba(255, 215, 94, .45);
+    background: rgba(22, 32, 66, .78);
+    color: #e6ecff;
+    font-family: inherit; font-weight: bold; font-size: 11px;
     display: flex; align-items: center; justify-content: center;
     touch-action: none;
   }
-  .btn.press { background: rgba(143, 227, 192, .45); color: #06110d; }
-  #btnAtk  { right: 5%;  bottom: calc(8% + env(safe-area-inset-bottom, 0px)); width: 25%; }
-  #btnDash { right: 33%; bottom: calc(4% + env(safe-area-inset-bottom, 0px)); width: 18%; }
-  @container (min-width: 1px) { .btn { font-size: 4.2cqw; } }
+  .btn.press { background: rgba(255, 215, 94, .5); color: #101528; }
+  /* 두 버튼 모두 하단 컨트롤 밴드(72px) 안에 들어가야 아레나를 가리지 않는다 */
+  #btnAtk  { right: 5%;  bottom: calc(.8% + env(safe-area-inset-bottom, 0px)); width: 11.5%; }
+  #btnDash { right: 26%; bottom: calc(1.3% + env(safe-area-inset-bottom, 0px)); width: 9%; }
 
   /* ── 랭킹 등록 폼 ── */
   #rankform {

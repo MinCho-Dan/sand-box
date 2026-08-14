@@ -1,15 +1,14 @@
 import { COL, MH, MW, THEMES, TS } from "../config";
-import { CHAPTERS } from "../data/chapters";
 import { ENEMY_DEF } from "../data/enemies";
 import { WEAPONS } from "../data/weapons";
-import { curWeapon, state, stat } from "../core/state";
+import { curWeapon, currentChapter, state, stat } from "../core/state";
 import type { ToolId } from "../types";
 import { blit } from "../assets/bake";
 import { ctx } from "./ctx";
 
 export function drawMap(): void {
   const g = state.map;
-  const th = THEMES[CHAPTERS[state.chapterIdx].theme] ?? THEMES.mart;
+  const th = THEMES[currentChapter(state.chapterIdx).theme] ?? THEMES.mart;
   for (let y = 0; y < MH; y++) {
     for (let x = 0; x < MW; x++) {
       const px = x * TS;

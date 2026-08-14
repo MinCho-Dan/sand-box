@@ -1,5 +1,5 @@
 import { AH, MH, MW, TS, W } from "../config";
-import { CHAPTERS, FIRST_TOOL_CHAPTER } from "../data/chapters";
+import { CHAPTERS, endlessChapter, FIRST_TOOL_CHAPTER, type Chapter } from "../data/chapters";
 import { ENEMY_DEF } from "../data/enemies";
 import { BATT_DROP, BATT_MAX, WEAPONS } from "../data/weapons";
 import type { Enemy, EnemyType, GameState, Player, Scene, ToolId } from "../types";
@@ -34,6 +34,7 @@ function blankPlayer(): Player {
 function blankState(): GameState {
   return {
     scene: "title",
+    mode: "story",
     sceneLock: 0,
     time: 0,
     runTime: 0,
@@ -80,7 +81,8 @@ export const curWeapon = () => WEAPONS[state.tool ?? "wrench"];
 export const stat = {
   maxhp: () => 100 + 20 * state.up.hp,
   maxfood: () => 100 + 20 * state.up.food,
-  foodRate: () => 1.5 * (1 - 0.1 * state.up.food),
+  // 원래 1.5 였다 — 허기가 사실상 무료라 시간 압박이 없다는 피드백을 받고 올렸다
+  foodRate: () => 1.9 * (1 - 0.1 * state.up.food),
   dmg: () => curWeapon().dmg + 4 * state.up.atk,
   atkCd: () => Math.max(0.12, curWeapon().cd - 0.04 * state.up.spd),
   reach: () => curWeapon().reach,
@@ -126,9 +128,19 @@ export function makeEnemy(type: EnemyType, x: number, y: number): Enemy {
   };
 }
 
+/** 스토리 모드는 고정 목록(CHAPTERS)을, 무한모드는 파도 번호로 즉석에서 계산한다. */
+export function currentChapter(i: number): Chapter {
+  return state.mode === "endless" ? endlessChapter(i) : CHAPTERS[i];
+}
+
+/** HUD·카드·상점에 쓰는 "STAGE n / 8" 또는 "ROUND n" 표기 */
+export function chapterLabel(i: number): string {
+  return state.mode === "endless" ? `ROUND ${i + 1}` : `STAGE ${i + 1} / ${CHAPTERS.length}`;
+}
+
 export function beginChapter(): void {
   const i = state.pendingChapter;
-  const ch = CHAPTERS[i];
+  const ch = currentChapter(i);
   state.chapterIdx = i;
   state.map = makeMap(ch);
   state.enemies = [];
@@ -160,6 +172,13 @@ export function beginChapter(): void {
       const t = take();
       state.items.push({ x: t.x, y: t.y, r: 11, type: "supply", label: kinds[k % kinds.length], t: rnd(0, 6) });
     }
+    // 배회하는 잡몹 — 완료 조건(보급품 수)에는 영향을 주지 않는다
+    for (const [type, n] of Object.entries(ch.ambient ?? {})) {
+      for (let k = 0; k < (n as number); k++) {
+        const t = take();
+        state.enemies.push(makeEnemy(type as EnemyType, t.x, t.y));
+      }
+    }
   } else if (ch.kind === "boss") {
     const t = nearestFree(state.map, Math.floor(MW / 2), 5);
     state.enemies.push(makeEnemy("boss", t.x, t.y));
@@ -173,10 +192,19 @@ export function beginChapter(): void {
       state.items.push({ x: s.x, y: s.y, r: 12, type: "tool", tool: "saw" as ToolId, t: 0 });
     }
   } else {
+    // 무한모드는 파도가 오를수록 개체 자체도 더 단단하고 빠르게 만든다 — 25파도에서 상한을 둔다
+    const hpMult = state.mode === "endless" ? 1 + Math.min(i, 25) * 0.05 : 1;
+    const spdMult = state.mode === "endless" ? Math.min(1.4, 1 + Math.min(i, 20) * 0.02) : 1;
     for (const [type, n] of Object.entries(ch.spawn ?? {})) {
       for (let k = 0; k < (n as number); k++) {
         const t = take();
-        state.enemies.push(makeEnemy(type as EnemyType, t.x, t.y));
+        const e = makeEnemy(type as EnemyType, t.x, t.y);
+        if (hpMult !== 1) {
+          e.hp = Math.round(e.hp * hpMult);
+          e.maxhp = e.hp;
+        }
+        e.spd *= spdMult;
+        state.enemies.push(e);
       }
     }
   }
@@ -194,7 +222,7 @@ export function beginChapter(): void {
 /** 현재 스테이지 안에서의 진행도 0~1.
  *  분열체가 늘어나면 1을 넘길 수 있어 clamp 한다. */
 export function stageProgress(): number {
-  const ch = CHAPTERS[state.chapterIdx];
+  const ch = currentChapter(state.chapterIdx);
   if (!ch) return 0;
   if (state.portal) return 1;
   if (ch.kind === "scavenge") return clamp(state.player.supplies / (ch.need || 1), 0, 1);
@@ -207,8 +235,8 @@ export function stageProgress(): number {
 
 /** 카드에 띄울 신규 적 목록 */
 export function newEnemiesFor(i: number): EnemyType[] {
-  const ch = CHAPTERS[i];
-  const types: EnemyType[] = ch.kind === "boss" ? ["boss"] : (Object.keys(ch.spawn ?? {}) as EnemyType[]);
+  const ch = currentChapter(i);
+  const types: EnemyType[] = ch.kind === "boss" ? ["boss"] : (Object.keys({ ...ch.spawn, ...ch.ambient }) as EnemyType[]);
   return types.filter((t) => !state.seen.has(t));
 }
 export function markSeen(i: number): void {
@@ -220,8 +248,23 @@ export function gotoShop(next: number): void {
   setScene("shop", 0.8);
 }
 export function gotoCard(): void {
+  // 무한모드에서 새로 등장하는 적이 없는 파도는 카드를 건너뛴다 —
+  // 매번 3.6초씩 멈추면 "무한히" 도는 느낌이 죽는다
+  if (state.mode === "endless" && newEnemiesFor(state.pendingChapter).length === 0) {
+    markSeen(state.pendingChapter);
+    beginChapter();
+    return;
+  }
   state.cardT = 0;
   setScene("card", 0.7);
+}
+
+/** 무한모드 시작 — 스테이지 진행 없이 곧장 1라운드로 들어간다 */
+export function startEndless(): void {
+  newGame();
+  state.mode = "endless";
+  state.pendingChapter = 0;
+  beginChapter();
 }
 
 export function equipTool(tool: ToolId): void {
