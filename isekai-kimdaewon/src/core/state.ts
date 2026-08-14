@@ -192,9 +192,10 @@ export function beginChapter(): void {
       state.items.push({ x: s.x, y: s.y, r: 12, type: "tool", tool: "saw" as ToolId, t: 0 });
     }
   } else {
-    // 무한모드는 파도가 오를수록 개체 자체도 더 단단하고 빠르게 만든다 — 25파도에서 상한을 둔다
-    const hpMult = state.mode === "endless" ? 1 + Math.min(i, 25) * 0.05 : 1;
-    const spdMult = state.mode === "endless" ? Math.min(1.4, 1 + Math.min(i, 20) * 0.02) : 1;
+    // 무한모드는 파도가 오를수록 개체 자체도 더 단단하고 빠르게 만든다 — 상한 없이 계속 오른다.
+    // 언젠가는 죽는 게 무한모드의 요점이라, 인위적인 천장을 두지 않는다.
+    const hpMult = state.mode === "endless" ? 1 + i * 0.05 : 1;
+    const spdMult = state.mode === "endless" ? 1 + i * 0.02 : 1;
     for (const [type, n] of Object.entries(ch.spawn ?? {})) {
       for (let k = 0; k < (n as number); k++) {
         const t = take();

@@ -131,7 +131,7 @@ export interface GameState {
 
 export interface UiButton {
   id: string;
-  kind: "buy" | "go" | "restart" | "rank" | "close" | "sound" | "control";
+  kind: "buy" | "go" | "restart" | "rank" | "close" | "sound" | "control" | "ranktab";
   x: number;
   y: number;
   w: number;
@@ -144,4 +144,5 @@ export interface ScoreRow {
   score: number;
   stage: number;
   kills: number;
+  mode?: RunMode;
 }

@@ -9,7 +9,7 @@ import { state } from "./state";
 const ANCHOR_X_FRAC = 0.22;
 const ANCHOR_Y_FRAC = 1 - CTRL_H / H / 2;
 /** 디지털 입력이라 아날로그보다 이동 반경이 짧아도 된다 */
-const FIXED_RADIUS_FRAC = 0.06;
+const FIXED_RADIUS_FRAC = 0.08;
 const DRAG_RADIUS_FRAC = 0.1;
 
 /** 씬을 넘기는 입력. 전환 직후 잠금 중이면 통째로 버린다. */

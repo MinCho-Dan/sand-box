@@ -58,10 +58,10 @@ beforeEach(() => {
 });
 
 describe("규격", () => {
-  it("캔버스 540x972 = HUD 108 + 아레나 792 + 하단 컨트롤 밴드 72", () => {
+  it("캔버스 540x972 = HUD 108 + 아레나 684 + 하단 컨트롤 밴드 180", () => {
     expect([W, H]).toEqual([540, 972]);
     expect(HUD_H + AH + CTRL_H).toBe(H);
-    expect([MW, MH, TS]).toEqual([15, 22, 36]);
+    expect([MW, MH, TS]).toEqual([15, 19, 36]);
     expect(MH * TS).toBe(AH);
   });
 
@@ -629,7 +629,7 @@ describe("무한모드", () => {
     expect(state.enemies.some((e) => e.type === "boss")).toBe(false);
   });
 
-  it("파도가 오를수록 적 체력과 속도가 오른다 (상한 적용)", () => {
+  it("파도가 오를수록 적 체력과 속도가 상한 없이 계속 오른다", () => {
     newGame();
     state.mode = "endless";
     state.pendingChapter = 0;
@@ -642,13 +642,13 @@ describe("무한모드", () => {
     expect(state.enemies[0].maxhp).toBeGreaterThan(baseHp);
     expect(state.enemies[0].spd).toBeGreaterThan(baseSpd);
 
-    // 상한 이후로는 더 오르지 않는다
+    // 25파도를 넘어가도 계속 오른다 (예전엔 여기서 상한에 걸렸다)
     state.pendingChapter = 25;
     beginChapter();
     const hpAt25 = state.enemies[0].maxhp;
-    state.pendingChapter = 40;
+    state.pendingChapter = 60;
     beginChapter();
-    expect(state.enemies[0].maxhp).toBe(hpAt25);
+    expect(state.enemies[0].maxhp).toBeGreaterThan(hpAt25);
   });
 
   it("보스전 종료 후에도 스토리 모드는 CHAPTERS 를 그대로 쓴다 (회귀)", () => {
@@ -691,6 +691,57 @@ describe("조작 방식", () => {
     pressButton(btn);
     expect(getControlMode()).not.toBe(before);
     pressButton(btn); // 원복 — 다른 테스트에 영향 주지 않는다
+  });
+});
+
+describe("랭킹 — 모드 분리", () => {
+  it("등록 본문에 모드가 들어가고, 조회는 지금 탭의 모드로 필터링한다", async () => {
+    startEndless();
+    state.score = 999;
+    const calls: any[] = [];
+    vi.stubGlobal("fetch", async (url: string, opts: any) => {
+      calls.push({ url, opts });
+      const post = (opts?.method ?? "GET") === "POST";
+      return {
+        ok: true, status: post ? 201 : 200,
+        json: async () => (post ? [{ id: 1 }] : [{ nick: "테스터", score: 999, stage: 12, kills: 3 }]),
+      };
+    });
+    await submitScore("테스터");
+    const post = calls.find((c) => c.opts.method === "POST");
+    expect(JSON.parse(post.opts.body).mode).toBe("endless");
+    // submitScore 내부에서 방금 플레이한 모드로 다시 조회한다
+    const get = calls.find((c) => c.opts.method !== "POST");
+    expect(get.url).toContain("mode=eq.endless");
+    expect(rank.mode).toBe("endless");
+    vi.unstubAllGlobals();
+  });
+
+  it("타이틀 랭킹 버튼은 항상 스토리 탭으로 연다", async () => {
+    newGame();
+    vi.stubGlobal("fetch", async (url: string) => {
+      expect(url).toContain("mode=eq.story");
+      return { ok: true, status: 200, json: async () => [] };
+    });
+    pressButton(sceneButtons().find((b) => b.kind === "rank")!);
+    expect(rank.mode).toBe("story");
+    vi.unstubAllGlobals();
+  });
+
+  it("탭 버튼으로 전환하면 그 모드로 다시 불러온다", async () => {
+    newGame();
+    setScene("rank", 0);
+    let lastUrl = "";
+    vi.stubGlobal("fetch", async (url: string) => {
+      lastUrl = url;
+      return { ok: true, status: 200, json: async () => [] };
+    });
+    const endlessTab = sceneButtons().find((b) => b.id === "tab-endless")!;
+    pressButton(endlessTab);
+    await Promise.resolve();
+    expect(rank.mode).toBe("endless");
+    expect(lastUrl).toContain("mode=eq.endless");
+    vi.unstubAllGlobals();
   });
 });
 

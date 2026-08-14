@@ -350,41 +350,46 @@ export function drawRank(): void {
   ctx.font = "12px sans-serif";
   ctx.fillText(SCORE_RULE, W / 2, 134);
 
+  // 탭 버튼 자체는 drawButtons() 가 그린다 — 여기서는 어느 쪽이 선택됐는지만 표시한다
+  const stageCol = rank.mode === "endless" ? "라운드" : "스테이지";
+  ctx.fillStyle = "rgba(255,215,94,.14)";
+  ctx.fillRect(rank.mode === "story" ? W / 2 - 108 : W / 2 + 8, 150, 100, 26);
+
   const rows = rank.rows;
   if (rank.status === "loading" && !rows) {
     ctx.fillStyle = COL.dim;
     ctx.font = "14px sans-serif";
-    ctx.fillText("불러오는 중…", W / 2, 300);
+    ctx.fillText("불러오는 중…", W / 2, 320);
   } else if (rank.status === "error" && !(rows && rows.length)) {
     ctx.fillStyle = "#ff8a8a";
     ctx.font = "14px sans-serif";
-    ctx.fillText("랭킹을 불러오지 못했습니다", W / 2, 292);
+    ctx.fillText("랭킹을 불러오지 못했습니다", W / 2, 312);
     ctx.fillStyle = COL.dim;
     ctx.font = "12px sans-serif";
-    ctx.fillText("네트워크 연결을 확인해 주세요", W / 2, 316);
+    ctx.fillText("네트워크 연결을 확인해 주세요", W / 2, 336);
   } else if (!rows || !rows.length) {
     ctx.fillStyle = COL.dim;
     ctx.font = "14px sans-serif";
-    ctx.fillText("아직 등록된 기록이 없습니다", W / 2, 292);
-    ctx.fillText("첫 번째 생존자가 되어보세요", W / 2, 318);
+    ctx.fillText("아직 등록된 기록이 없습니다", W / 2, 312);
+    ctx.fillText("첫 번째 생존자가 되어보세요", W / 2, 338);
   } else {
     ctx.textAlign = "left";
     ctx.font = "10px sans-serif";
     ctx.fillStyle = COL.dim;
-    ctx.fillText("순위", 26, 176);
-    ctx.fillText("닉네임", 76, 176);
+    ctx.fillText("순위", 26, 196);
+    ctx.fillText("닉네임", 76, 196);
     ctx.textAlign = "right";
-    ctx.fillText("스테이지", W - 118, 176);
-    ctx.fillText("점수", W - 26, 176);
+    ctx.fillText(stageCol, W - 118, 196);
+    ctx.fillText("점수", W - 26, 196);
     ctx.strokeStyle = UI.lineDim;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(20, 184);
-    ctx.lineTo(W - 20, 184);
+    ctx.moveTo(20, 204);
+    ctx.lineTo(W - 20, 204);
     ctx.stroke();
 
     rows.slice(0, RANK_LIMIT).forEach((r, i) => {
-      const y = 212 + i * 32;
+      const y = 232 + i * 32;
       const me = i === rank.mine;
       if (me) {
         ctx.fillStyle = UI.fillOn;

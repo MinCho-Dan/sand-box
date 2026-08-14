@@ -1,6 +1,6 @@
 import { getNick, setNick } from "../core/save";
 import { touch } from "../core/inputState";
-import { setScene, state } from "../core/state";
+import { chapterLabel, setScene, state } from "../core/state";
 import { rankOn, submitScore } from "../systems/ranking";
 
 let form: HTMLElement | null = null;
@@ -71,7 +71,7 @@ export function syncRankForm(): void {
   const shown = document.body.classList.contains("asknick");
 
   if (show && !shown) {
-    sub.textContent = `점수 ${state.score.toLocaleString("en-US")} · STAGE ${state.chapterIdx + 1}`;
+    sub.textContent = `점수 ${state.score.toLocaleString("en-US")} · ${chapterLabel(state.chapterIdx)}`;
     msg.textContent = "";
     document.body.classList.add("asknick");
     // 모바일은 자동 포커스 시 키보드가 튀어나와 방해된다

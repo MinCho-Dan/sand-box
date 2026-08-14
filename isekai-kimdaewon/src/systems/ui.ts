@@ -34,7 +34,13 @@ export function sceneButtons(): UiButton[] {
     return [...out, ...row2];
   }
 
-  if (s === "rank") return [{ id: "close", kind: "close", x: W / 2 - 85, y: H - 104, w: 170, h: 52, label: "닫기" }];
+  if (s === "rank") {
+    return [
+      { id: "tab-story", kind: "ranktab", x: W / 2 - 108, y: 150, w: 100, h: 26, label: "스토리" },
+      { id: "tab-endless", kind: "ranktab", x: W / 2 + 8, y: 150, w: 100, h: 26, label: "무한" },
+      { id: "close", kind: "close", x: W / 2 - 85, y: H - 104, w: 170, h: 52, label: "닫기" },
+    ];
+  }
   if (s === "shop") return shopButtons();
   // 엔딩은 본문이 아래까지 내려오므로 버튼을 더 낮게 둔다
   if (s === "ending") return [{ id: "restart", kind: "restart", x: W / 2 - 110, y: H - 118, w: 220, h: 60 }];
@@ -69,8 +75,12 @@ export function pressButton(b: UiButton): void {
       break;
     case "rank":
       sfx("ui");
-      void fetchRanking();
+      void fetchRanking("story"); // 타이틀에서는 항상 스토리 탭으로 연다 — 예측 가능하게
       setScene("rank", 0.3);
+      break;
+    case "ranktab":
+      sfx("ui");
+      void fetchRanking(b.id === "tab-endless" ? "endless" : "story");
       break;
     case "close":
       sfx("ui");

@@ -74,9 +74,10 @@ export function drawControlBand(touchOn: boolean): void {
 
   ctx.textAlign = "center";
   ctx.fillStyle = COL.dim;
-  ctx.font = "11px sans-serif";
-  ctx.fillText("이동 WASD · 방향키", W / 2, y + 28);
-  ctx.fillText("공격 J · 회피 K · 음소거 M", W / 2, y + 48);
+  ctx.font = "13px sans-serif";
+  ctx.fillText("이동 WASD · 방향키", W / 2, y + 70);
+  ctx.fillText("공격 J · 회피 K", W / 2, y + 96);
+  ctx.fillText("음소거 M", W / 2, y + 122);
 }
 
 export function drawButtons(): void {

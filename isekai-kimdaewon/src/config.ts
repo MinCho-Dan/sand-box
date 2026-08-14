@@ -1,16 +1,19 @@
 /** 화면 규격.
- *  캔버스 540x972 = 상단 HUD 108 + 아레나 792 + 하단 컨트롤 밴드 72.
+ *  캔버스 540x972 = 상단 HUD 108 + 아레나 684 + 하단 컨트롤 밴드 180.
  *  월드 좌표(플레이어·적·아이템)는 (0,0)~(W,AH) 안에서만 움직이고,
  *  렌더링할 때 HUD_H 만큼 아래로 옮겨 그린다.
  *  하단 CTRL_H 는 아레나에서 제외된 예약 공간이라 터치 버튼이 적이나
- *  아이템을 가리는 일이 없다. PC 모드에서는 조작 안내 텍스트가 채운다. */
+ *  아이템을 가리는 일이 없다. PC 모드에서는 조작 안내 텍스트가 채운다.
+ *  처음엔 72px(2타일)로 뒀다가 "버튼이 너무 밑에 있다"는 피드백을 받고
+ *  180px(5타일, 2.5배)로 늘렸다 — 아레나를 아주 조금만 더 줄이는 대신
+ *  버튼 쪽에 여유를 몰아준 것이다. */
 export const TS = 36;
 export const MW = 15;
-export const MH = 22;
+export const MH = 19;
 export const W = MW * TS; // 540
-export const AH = MH * TS; // 792
+export const AH = MH * TS; // 684
 export const HUD_H = 108;
-export const CTRL_H = 72;
+export const CTRL_H = 180;
 export const H = AH + HUD_H + CTRL_H; // 972
 
 /** 팔레트는 키 아트(폭풍우 치는 남색 하늘 · 금색 타이틀 · 시안 검기 ·
