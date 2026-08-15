@@ -1,10 +1,10 @@
 import Phaser from 'phaser'
 import { EventBus } from './EventBus'
-import { JOBS, JOB_LIST, RARITIES, RARITY_LIST, HIRE_COST } from '../data/employees'
+import { JOBS, JOB_LIST, RARITIES, RARITY_LIST, HIRE_COST, upgradeCost } from '../data/employees'
 import { waveComposition, waveHpMult, waveSpeedMult } from '../data/enemies'
 import { SYNERGIES } from '../data/synergies'
-import { baseAttack, baseAttackSpeed, basePower } from '../stats'
-import type { Employee, EnemyDef, GameSnapshot, JobId, Rarity } from '../types'
+import { baseAttack, baseAttackSpeed } from '../stats'
+import type { Employee, EnemyDef, GameSnapshot, JobId } from '../types'
 
 // 세로형(모바일 우선) 필드. 업무는 위에서 아래로 내려와 하단의 회사를 위협한다.
 const FIELD_W = 450
@@ -44,12 +44,6 @@ interface RuntimeEnemy {
   hpFg: Phaser.GameObjects.Rectangle
 }
 
-interface MergeResult {
-  jobId: JobId
-  rarity: Rarity
-  toLevel: number
-}
-
 function pickWeighted<T extends { hireWeight?: number }>(list: T[], weight: (item: T) => number): T {
   const total = list.reduce((sum, item) => sum + weight(item), 0)
   let r = Math.random() * total
@@ -61,7 +55,8 @@ function pickWeighted<T extends { hireWeight?: number }>(list: T[], weight: (ite
 }
 
 export class MainScene extends Phaser.Scene {
-  private employees: Employee[] = []
+  /** 인덱스 = 슬롯 번호. 대기 명단이 따로 없다 — 채용은 곧 배치다. */
+  private slots: (Employee | null)[] = new Array(SLOT_POS.length).fill(null)
   private gold = START_GOLD
   private hp = START_HP
   private wave = 0
@@ -74,15 +69,15 @@ export class MainScene extends Phaser.Scene {
   private spawnTimer = 0
   private enemies: RuntimeEnemy[] = []
   private cooldowns = new Map<string, number>()
-  private selectedUid: string | null = null
   private idCounter = 0
   private emitAccumulator = 0
   private playTimeMs = 0
-  private promotionSeq = 0
-  private lastPromotionText = ''
+  private upgradeSeq = 0
+  private lastUpgradeText = ''
 
   private slotGfx: Phaser.GameObjects.Rectangle[] = []
   private slotLockGfx: Phaser.GameObjects.Container[] = []
+  private slotHireHint: Phaser.GameObjects.Text[] = []
   private slotContent = new Map<number, Phaser.GameObjects.Container>()
 
   private boundHandlers: Array<[string, (...args: never[]) => void]> = []
@@ -109,6 +104,11 @@ export class MainScene extends Phaser.Scene {
       rect.on('pointerdown', () => this.onSlotClick(i))
       this.slotGfx.push(rect)
 
+      const hint = this.add
+        .text(pos.x, pos.y, `+${HIRE_COST}G`, { fontSize: '11px', color: '#64748b' })
+        .setOrigin(0.5)
+      this.slotHireHint.push(hint)
+
       const lockContainer = this.add.container(pos.x, pos.y)
       const lockIcon = this.add.text(0, -8, '🔒', { fontSize: '18px' }).setOrigin(0.5)
       const lockLabel = this.add
@@ -119,13 +119,6 @@ export class MainScene extends Phaser.Scene {
     })
     this.refreshSlotLocks()
 
-    this.registerBusHandler('hire', () => this.hireRandomEmployee())
-    this.registerBusHandler('select-employee', (uid: string) => {
-      this.selectedUid = this.selectedUid === uid ? null : uid
-      this.redrawSlotHighlights()
-      this.emitState()
-    })
-    this.registerBusHandler('auto-arrange', () => this.autoArrange())
     this.registerBusHandler('set-speed', (n: 1 | 2 | 3) => {
       this.speedMult = n
       this.emitState()
@@ -148,7 +141,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   private resetGame() {
-    this.employees = []
+    this.slots = new Array(SLOT_POS.length).fill(null)
     this.gold = START_GOLD
     this.hp = START_HP
     this.wave = 0
@@ -158,10 +151,9 @@ export class MainScene extends Phaser.Scene {
     this.intermissionTimer = 1500
     this.spawnQueue = []
     this.cooldowns.clear()
-    this.selectedUid = null
     this.playTimeMs = 0
-    this.promotionSeq = 0
-    this.lastPromotionText = ''
+    this.upgradeSeq = 0
+    this.lastUpgradeText = ''
     for (const e of this.enemies) e.container.destroy()
     this.enemies = []
     this.refreshSlotLocks()
@@ -174,92 +166,48 @@ export class MainScene extends Phaser.Scene {
     return `emp-${this.idCounter}`
   }
 
-  /** 채용 즉시 동일 직무·등급·레벨 직원이 있으면 자동으로 합쳐 승진시킨다.
-   * 대기 명단이 무한히 쌓이는 것을 막고, 흔한 랜타디 관례("합치면 상위 유닛")를 따른다. */
-  private hireRandomEmployee() {
-    if (this.gameOver || this.gold < HIRE_COST) return
-    this.gold -= HIRE_COST
-    const job = Phaser.Utils.Array.GetRandom(JOB_LIST)
-    const rarity = pickWeighted(RARITY_LIST, (r) => r.hireWeight)
-    const emp: Employee = { uid: this.genId(), jobId: job.id, rarity: rarity.id, level: 1, slotIndex: null }
-    this.employees.push(emp)
+  /** 빈 슬롯 클릭 = 랜덤 채용해 그 자리에 배치. 이미 직원이 있으면 골드로 강화(레벨+1)한다. */
+  private onSlotClick(slotIndex: number) {
+    if (this.gameOver || !this.isSlotUnlocked(slotIndex)) return
+    const current = this.slots[slotIndex]
 
-    const merges: MergeResult[] = []
-    let result = this.mergeOnce()
-    while (result) {
-      merges.push(result)
-      result = this.mergeOnce()
+    if (!current) {
+      if (this.gold < HIRE_COST) return
+      this.gold -= HIRE_COST
+      const job = Phaser.Utils.Array.GetRandom(JOB_LIST)
+      const rarity = pickWeighted(RARITY_LIST, (r) => r.hireWeight)
+      this.slots[slotIndex] = { uid: this.genId(), jobId: job.id, rarity: rarity.id, level: 1 }
+    } else {
+      const cost = upgradeCost(current.level)
+      if (this.gold < cost) return
+      this.gold -= cost
+      current.level += 1
+      this.lastUpgradeText = `${JOBS[current.jobId].name} Lv.${current.level}로 강화!`
+      this.upgradeSeq += 1
     }
-    if (merges.length > 0) {
-      const counts = new Map<string, number>()
-      for (const m of merges) {
-        const key = `${JOBS[m.jobId].name} → Lv.${m.toLevel}`
-        counts.set(key, (counts.get(key) ?? 0) + 1)
-      }
-      this.lastPromotionText = Array.from(counts.entries())
-        .map(([label, count]) => `${label} ×${count}`)
-        .join(', ')
-      this.promotionSeq += 1
-      this.redrawAllSlots() // 배치된 직원이 합쳐진 경우 슬롯 표시(레벨·ATK)도 갱신
-    }
-
-    this.emitState()
-  }
-
-  /** 동일 직무·등급·레벨 2명을 찾아 하나로 합친다. 합쳐졌다면 결과를, 없으면 null 을 반환한다. */
-  private mergeOnce(): MergeResult | null {
-    const groups = new Map<string, Employee[]>()
-    for (const e of this.employees) {
-      const key = `${e.jobId}|${e.rarity}|${e.level}`
-      const arr = groups.get(key) ?? []
-      arr.push(e)
-      groups.set(key, arr)
-    }
-    for (const arr of groups.values()) {
-      if (arr.length >= 2) {
-        const [a, b] = arr
-        a.level += 1
-        if (a.slotIndex === null && b.slotIndex !== null) a.slotIndex = b.slotIndex
-        this.employees.splice(this.employees.indexOf(b), 1)
-        return { jobId: a.jobId, rarity: a.rarity, toLevel: a.level }
-      }
-    }
-    return null
-  }
-
-  /** 개발자·QA·DevOps 를 우선 확보해 시너지를 최대한 발동시키고, 남은 슬롯은 화력 순으로 채운다. */
-  private autoArrange() {
-    if (this.gameOver) return
-    for (const e of this.employees) e.slotIndex = null
-
-    const unlocked = this.unlockedSlotIndices()
-    const chosen: Employee[] = []
-    const bestOfJob = (job: JobId) =>
-      this.employees
-        .filter((e) => e.jobId === job && !chosen.includes(e))
-        .sort((a, b) => basePower(b) - basePower(a))[0]
-
-    const dev = bestOfJob('developer')
-    if (dev) {
-      chosen.push(dev)
-      const qa = bestOfJob('qa')
-      if (qa) chosen.push(qa)
-      const devops = bestOfJob('devops')
-      if (devops) chosen.push(devops)
-    }
-
-    const rest = this.employees.filter((e) => !chosen.includes(e)).sort((a, b) => basePower(b) - basePower(a))
-    for (const e of rest) {
-      if (chosen.length >= unlocked.length) break
-      chosen.push(e)
-    }
-
-    chosen.slice(0, unlocked.length).forEach((e, i) => {
-      e.slotIndex = unlocked[i]
-    })
 
     this.redrawAllSlots()
     this.emitState()
+  }
+
+  private activeSynergyIds(): string[] {
+    const placedJobs = new Set(this.slots.filter((e): e is Employee => e !== null).map((e) => e.jobId))
+    return SYNERGIES.filter((s) => s.requiredJobs.every((j) => placedJobs.has(j))).map((s) => s.id)
+  }
+
+  private effectiveStats(emp: Employee, activeIds: string[]) {
+    const job = JOBS[emp.jobId]
+    let atk = baseAttack(emp)
+    let atkSpeed = baseAttackSpeed(emp)
+
+    for (const id of activeIds) {
+      const syn = SYNERGIES.find((s) => s.id === id)
+      if (syn && syn.appliesTo.includes(job.id)) {
+        if (syn.attackMult) atk *= syn.attackMult
+        if (syn.attackSpeedMult) atkSpeed *= syn.attackSpeedMult
+      }
+    }
+    return { atk, atkSpeed, range: job.baseRange, vsTankyMult: job.vsTankyMult, bonusGoldMult: job.bonusGoldMult }
   }
 
   private unlockedSlotIndices(): number[] {
@@ -280,67 +228,17 @@ export class MainScene extends Phaser.Scene {
       const unlocked = this.isSlotUnlocked(i)
       const rect = this.slotGfx[i]
       rect.setFillStyle(0x1e293b, unlocked ? 0.6 : 0.3)
+      rect.setStrokeStyle(2, unlocked ? 0x475569 : 0x334155)
       this.slotLockGfx[i].setVisible(!unlocked)
       if (unlocked) rect.setInteractive({ useHandCursor: true })
       else rect.disableInteractive()
     })
-    this.redrawSlotHighlights()
+    this.refreshHireHints()
   }
 
-  private onSlotClick(slotIndex: number) {
-    if (this.gameOver || !this.isSlotUnlocked(slotIndex)) return
-    const occupant = this.employees.find((e) => e.slotIndex === slotIndex)
-
-    if (this.selectedUid) {
-      const emp = this.employees.find((e) => e.uid === this.selectedUid)
-      if (emp) {
-        const prevSlot = emp.slotIndex
-        if (occupant && occupant.uid !== emp.uid) occupant.slotIndex = prevSlot
-        emp.slotIndex = slotIndex
-      }
-      this.selectedUid = null
-    } else if (occupant) {
-      occupant.slotIndex = null
-    }
-    this.redrawAllSlots()
-    this.emitState()
-  }
-
-  private activeSynergyIds(): string[] {
-    const placedJobs = new Set(
-      this.employees.filter((e) => e.slotIndex !== null).map((e) => e.jobId),
-    )
-    return SYNERGIES.filter((s) => s.requiredJobs.every((j) => placedJobs.has(j))).map((s) => s.id)
-  }
-
-  private effectiveStats(emp: Employee, activeIds: string[]) {
-    const job = JOBS[emp.jobId]
-    let atk = baseAttack(emp)
-    let atkSpeed = baseAttackSpeed(emp)
-
-    for (const id of activeIds) {
-      const syn = SYNERGIES.find((s) => s.id === id)
-      if (syn && syn.appliesTo.includes(job.id)) {
-        if (syn.attackMult) atk *= syn.attackMult
-        if (syn.attackSpeedMult) atkSpeed *= syn.attackSpeedMult
-      }
-    }
-    return { atk, atkSpeed, range: job.baseRange, vsTankyMult: job.vsTankyMult, bonusGoldMult: job.bonusGoldMult }
-  }
-
-  private redrawSlotHighlights() {
+  private refreshHireHints() {
     SLOT_POS.forEach((_, i) => {
-      const rect = this.slotGfx[i]
-      if (!this.isSlotUnlocked(i)) {
-        rect.setStrokeStyle(2, 0x334155)
-        return
-      }
-      const occupied = this.employees.some((e) => e.slotIndex === i)
-      if (!occupied && this.selectedUid) {
-        rect.setStrokeStyle(3, 0xfacc15)
-      } else {
-        rect.setStrokeStyle(2, 0x475569)
-      }
+      this.slotHireHint[i].setVisible(this.isSlotUnlocked(i) && this.slots[i] === null)
     })
   }
 
@@ -350,9 +248,9 @@ export class MainScene extends Phaser.Scene {
 
     const activeIds = this.activeSynergyIds()
 
-    for (const emp of this.employees) {
-      if (emp.slotIndex === null) continue
-      const pos = SLOT_POS[emp.slotIndex]
+    this.slots.forEach((emp, i) => {
+      if (!emp) return
+      const pos = SLOT_POS[i]
       const job = JOBS[emp.jobId]
       const rarity = RARITIES[emp.rarity]
       const stats = this.effectiveStats(emp, activeIds)
@@ -365,16 +263,19 @@ export class MainScene extends Phaser.Scene {
       const atkTxt = this.add
         .text(0, 22, `ATK ${Math.round(stats.atk)}`, { fontSize: '9px', color: '#94a3b8' })
         .setOrigin(0.5)
-      container.add([bg, icon, lvl, atkTxt])
+      const costTxt = this.add
+        .text(0, 40, `🔧 ${upgradeCost(emp.level)}G`, { fontSize: '9px', color: '#fbbf24' })
+        .setOrigin(0.5)
+      container.add([bg, icon, lvl, atkTxt, costTxt])
       container.setSize(60, 60)
       container.setInteractive({ useHandCursor: true })
       container.on('pointerdown', (_p: unknown, _lx: number, _ly: number, event: { stopPropagation: () => void }) => {
         event.stopPropagation()
-        this.onSlotClick(emp.slotIndex as number)
+        this.onSlotClick(i)
       })
-      this.slotContent.set(emp.slotIndex, container)
-    }
-    this.redrawSlotHighlights()
+      this.slotContent.set(i, container)
+    })
+    this.refreshHireHints()
   }
 
   private startWave() {
@@ -468,14 +369,14 @@ export class MainScene extends Phaser.Scene {
     // 직원 공격
     if (!this.gameOver) {
       const activeIds = this.activeSynergyIds()
-      for (const emp of this.employees) {
-        if (emp.slotIndex === null) continue
+      this.slots.forEach((emp, i) => {
+        if (!emp) return
         const cd = (this.cooldowns.get(emp.uid) ?? 0) - dt
         if (cd > 0) {
           this.cooldowns.set(emp.uid, cd)
-          continue
+          return
         }
-        const pos = SLOT_POS[emp.slotIndex]
+        const pos = SLOT_POS[i]
         const stats = this.effectiveStats(emp, activeIds)
         let target: RuntimeEnemy | null = null
         let bestProgress = -Infinity
@@ -497,7 +398,7 @@ export class MainScene extends Phaser.Scene {
             this.removeEnemy(target)
           }
         }
-      }
+      })
     }
 
     this.emitAccumulator += delta
@@ -516,7 +417,7 @@ export class MainScene extends Phaser.Scene {
       score: Math.round(this.score),
       speed: this.speedMult,
       gameOver: this.gameOver,
-      employees: this.employees.map((e) => ({ ...e })),
+      slots: this.slots.map((e) => (e ? { ...e } : null)),
       slotCount: SLOT_POS.length,
       unlockedSlotCount: this.unlockedSlotIndices().length,
       nextSlotUnlockWave: this.nextSlotUnlockWaveDisplay(),
@@ -524,9 +425,8 @@ export class MainScene extends Phaser.Scene {
       waveIntermission: this.waveIntermission,
       intermissionSecondsLeft: this.waveIntermission ? Math.max(0, Math.ceil(this.intermissionTimer / 1000)) : 0,
       playTimeSeconds: Math.floor(this.playTimeMs / 1000),
-      selectedUid: this.selectedUid,
-      promotionSeq: this.promotionSeq,
-      lastPromotionText: this.lastPromotionText,
+      upgradeSeq: this.upgradeSeq,
+      lastUpgradeText: this.lastUpgradeText,
     }
     EventBus.emit('state-update', snapshot)
   }

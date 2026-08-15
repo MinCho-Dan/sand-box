@@ -34,7 +34,6 @@ export interface Employee {
   jobId: JobId
   rarity: Rarity
   level: number
-  slotIndex: number | null
 }
 
 export interface EnemyDef {
@@ -68,7 +67,8 @@ export interface GameSnapshot {
   score: number
   speed: 1 | 2 | 3
   gameOver: boolean
-  employees: Employee[]
+  /** 인덱스 = 슬롯 번호. 비어 있으면 null. */
+  slots: (Employee | null)[]
   slotCount: number
   unlockedSlotCount: number
   nextSlotUnlockWave: number | null
@@ -76,7 +76,6 @@ export interface GameSnapshot {
   waveIntermission: boolean
   intermissionSecondsLeft: number
   playTimeSeconds: number
-  selectedUid: string | null
-  promotionSeq: number
-  lastPromotionText: string
+  upgradeSeq: number
+  lastUpgradeText: string
 }

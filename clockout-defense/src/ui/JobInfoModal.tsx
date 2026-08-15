@@ -1,4 +1,4 @@
-import { JOB_LIST } from '../data/employees'
+import { JOB_LIST, HIRE_COST } from '../data/employees'
 import { SYNERGIES } from '../data/synergies'
 import Modal from './Modal'
 
@@ -10,8 +10,9 @@ export default function JobInfoModal({ onClose }: Props) {
   return (
     <Modal title="직무 안내" onClose={onClose}>
       <div className="mb-3 text-[11px] text-slate-500">
-        등급 배율 Common ×1 · Rare ×1.6 · Epic ×2.6 — 같은 직무·등급·레벨 직원을 채용하면 자동으로
-        합쳐져 레벨업합니다(공격력·공격속도 +25%/레벨).
+        빈 슬롯을 누르면 {HIRE_COST}G 에 랜덤 직원이 채용돼 그 자리에 배치됩니다. 이미 직원이
+        있는 슬롯을 누르면 골드를 내고 레벨을 올릴 수 있습니다(레벨마다 공격력·공격속도
+        +25%, 강화 비용도 함께 오름). 등급 배율 Common ×1 · Rare ×1.6 · Epic ×2.6.
       </div>
       <div className="flex flex-col gap-3">
         {JOB_LIST.map((job) => {

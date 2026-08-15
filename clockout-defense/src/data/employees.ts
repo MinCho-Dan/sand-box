@@ -57,3 +57,8 @@ export const RARITY_LIST = Object.values(RARITIES)
 
 export const HIRE_COST = 100
 export const LEVEL_STAT_GROWTH = 0.25
+
+/** 이미 배치된 직원을 골드로 강화(레벨업)할 때의 비용. 레벨이 오를수록 비싸진다. */
+export function upgradeCost(level: number): number {
+  return 80 + (level - 1) * 40
+}
