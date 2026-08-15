@@ -1,36 +1,90 @@
 import Phaser from 'phaser'
 import { EventBus } from './EventBus'
-import { JOBS, JOB_LIST, RARITIES, RARITY_LIST, HIRE_COST, upgradeCost } from '../data/employees'
+import {
+  JOBS,
+  JOB_LIST,
+  RARITIES,
+  RARITY_LIST,
+  HIRE_COST,
+  upgradeCost,
+  LEVEL_CAP,
+  MAX_RARITY,
+} from '../data/employees'
 import { waveComposition, waveHpMult, waveSpeedMult } from '../data/enemies'
 import { SYNERGIES } from '../data/synergies'
 import { baseAttack, baseAttackSpeed } from '../stats'
-import type { Employee, EnemyDef, GameSnapshot, JobId } from '../types'
+import type { Employee, EnemyDef, GameSnapshot, JobId, Rarity } from '../types'
 
-// 세로형(모바일 우선) 필드. 업무는 위에서 아래로 내려와 하단의 회사를 위협한다.
+// 세로형(모바일 우선) 필드. 업무는 ㄹ자로 왔다갔다 하며 아래로 내려와 하단의 회사를 위협한다.
 const FIELD_W = 450
-const FIELD_H = 800
-const PATH_X = 225
-const BASE_Y = 720
-const SPAWN_Y = -20
+const FIELD_H = 950
 const SPAWN_INTERVAL_MS = 650
 const INTERMISSION_MS = 4000
 const START_GOLD = 300
 const START_HP = 100
 const EMIT_INTERVAL_MS = 150
+const PATH_BAND = 90
 
+/** ㄹ자 경로의 꺾이는 지점들. 순서대로 지나간다. */
+const PATH_POINTS = [
+  { x: 70, y: -20 },
+  { x: 70, y: 130 },
+  { x: 380, y: 130 },
+  { x: 380, y: 400 },
+  { x: 70, y: 400 },
+  { x: 70, y: 670 },
+  { x: 380, y: 670 },
+  { x: 380, y: 860 },
+]
+
+interface PathSegment {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  length: number
+}
+
+const PATH_SEGMENTS: PathSegment[] = PATH_POINTS.slice(1).map((p, i) => {
+  const prev = PATH_POINTS[i]
+  return { x1: prev.x, y1: prev.y, x2: p.x, y2: p.y, length: Phaser.Math.Distance.Between(prev.x, prev.y, p.x, p.y) }
+})
+const TOTAL_PATH_LENGTH = PATH_SEGMENTS.reduce((sum, seg) => sum + seg.length, 0)
+const BASE_POS = PATH_POINTS[PATH_POINTS.length - 1]
+
+function pointAtDistance(dist: number): { x: number; y: number; arrived: boolean } {
+  if (dist >= TOTAL_PATH_LENGTH) {
+    return { x: BASE_POS.x, y: BASE_POS.y, arrived: true }
+  }
+  let remaining = dist
+  for (const seg of PATH_SEGMENTS) {
+    if (remaining <= seg.length) {
+      const t = seg.length === 0 ? 0 : remaining / seg.length
+      return { x: seg.x1 + (seg.x2 - seg.x1) * t, y: seg.y1 + (seg.y2 - seg.y1) * t, arrived: false }
+    }
+    remaining -= seg.length
+  }
+  return { x: BASE_POS.x, y: BASE_POS.y, arrived: true }
+}
+
+// 레인 사이 여유 공간에 슬롯을 배치한다. 경로가 지나가는 대역(±45)은 피한다.
 const SLOT_POS = [
-  { x: 115, y: 130 },
-  { x: 335, y: 130 },
-  { x: 115, y: 300 },
-  { x: 335, y: 300 },
-  { x: 115, y: 470 },
-  { x: 335, y: 470 },
-  { x: 115, y: 640 },
-  { x: 335, y: 640 },
+  { x: 160, y: 45 },
+  { x: 255, y: 45 },
+  { x: 350, y: 45 },
+  { x: 100, y: 265 },
+  { x: 195, y: 265 },
+  { x: 290, y: 265 },
+  { x: 160, y: 535 },
+  { x: 255, y: 535 },
+  { x: 350, y: 535 },
+  { x: 100, y: 790 },
+  { x: 195, y: 790 },
+  { x: 290, y: 790 },
 ]
 
 /** 각 슬롯이 열리는 최소 웨이브(0-index). 0 은 시작부터 열려 있다는 뜻. */
-const SLOT_UNLOCK_WAVE = [0, 0, 0, 5, 0, 0, 0, 10]
+const SLOT_UNLOCK_WAVE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 11]
 
 interface RuntimeEnemy {
   uid: string
@@ -38,13 +92,15 @@ interface RuntimeEnemy {
   hp: number
   maxHp: number
   speed: number
+  traveled: number
+  x: number
   y: number
   container: Phaser.GameObjects.Container
   circle: Phaser.GameObjects.Arc
   hpFg: Phaser.GameObjects.Rectangle
 }
 
-function pickWeighted<T extends { hireWeight?: number }>(list: T[], weight: (item: T) => number): T {
+function pickWeighted<T extends { hireWeight: number }>(list: T[], weight: (item: T) => number): T {
   const total = list.reduce((sum, item) => sum + weight(item), 0)
   let r = Math.random() * total
   for (const item of list) {
@@ -65,6 +121,8 @@ export class MainScene extends Phaser.Scene {
   private gameOver = false
   private waveIntermission = true
   private intermissionTimer = 1500
+  /** 랜덤 채용에서 나올 수 있는 최고 등급. 티어업 합체로만 올라간다. */
+  private maxUnlockedTier: Rarity = 1
   private spawnQueue: EnemyDef[] = []
   private spawnTimer = 0
   private enemies: RuntimeEnemy[] = []
@@ -89,13 +147,20 @@ export class MainScene extends Phaser.Scene {
   create() {
     this.cameras.main.setBackgroundColor('#0f172a')
 
-    // 이동 경로 (위 → 아래)
-    this.add.rectangle(PATH_X, FIELD_H / 2, 140, FIELD_H, 0x1e293b)
-    this.add.rectangle(PATH_X, FIELD_H / 2, 2, FIELD_H, 0x334155)
+    // ㄹ자 이동 경로
+    for (const seg of PATH_SEGMENTS) {
+      const midX = (seg.x1 + seg.x2) / 2
+      const midY = (seg.y1 + seg.y2) / 2
+      if (seg.y1 === seg.y2) {
+        this.add.rectangle(midX, midY, Math.abs(seg.x2 - seg.x1) + PATH_BAND, PATH_BAND, 0x1e293b)
+      } else {
+        this.add.rectangle(midX, midY, PATH_BAND, Math.abs(seg.y2 - seg.y1) + PATH_BAND, 0x1e293b)
+      }
+    }
 
     // 회사(기지)
-    this.add.rectangle(PATH_X, BASE_Y + 20, 140, 40, 0x8fe3c0).setAlpha(0.85)
-    this.add.text(PATH_X, BASE_Y - 20, '회사', { fontSize: '14px', color: '#8fe3c0' }).setOrigin(0.5)
+    this.add.rectangle(BASE_POS.x, BASE_POS.y + 25, 140, 40, 0x8fe3c0).setAlpha(0.85)
+    this.add.text(BASE_POS.x, BASE_POS.y - 15, '회사', { fontSize: '14px', color: '#8fe3c0' }).setOrigin(0.5)
 
     SLOT_POS.forEach((pos, i) => {
       const rect = this.add.rectangle(pos.x, pos.y, 64, 64, 0x1e293b, 0.6)
@@ -146,6 +211,7 @@ export class MainScene extends Phaser.Scene {
     this.hp = START_HP
     this.wave = 0
     this.score = 0
+    this.maxUnlockedTier = 1
     this.gameOver = false
     this.waveIntermission = true
     this.intermissionTimer = 1500
@@ -166,7 +232,21 @@ export class MainScene extends Phaser.Scene {
     return `emp-${this.idCounter}`
   }
 
-  /** 빈 슬롯 클릭 = 랜덤 채용해 그 자리에 배치. 이미 직원이 있으면 골드로 강화(레벨+1)한다. */
+  /** slotIndex 와 같은 직무·등급·레벨(=`LEVEL_CAP`) 직원이 있는 다른 슬롯을 찾는다. */
+  private findMergePartner(slotIndex: number): number {
+    const current = this.slots[slotIndex]
+    if (!current || current.level !== LEVEL_CAP) return -1
+    return this.slots.findIndex(
+      (e, i) => i !== slotIndex && e !== null && e.jobId === current.jobId && e.rarity === current.rarity && e.level === LEVEL_CAP,
+    )
+  }
+
+  /**
+   * 빈 슬롯 클릭 = 랜덤 채용해 그 자리에 배치.
+   * 레벨이 남은 슬롯 클릭 = 골드로 강화(레벨+1).
+   * 레벨이 꽉 찬(=LEVEL_CAP) 슬롯 클릭 = 동일 직무·등급·레벨의 다른 슬롯을 찾아 있으면
+   * 그 슬롯을 비우고, 여기에 한 단계 위 등급의 랜덤 직무 Lv.1 직원을 만든다(티어업).
+   */
   private onSlotClick(slotIndex: number) {
     if (this.gameOver || !this.isSlotUnlocked(slotIndex)) return
     const current = this.slots[slotIndex]
@@ -175,14 +255,26 @@ export class MainScene extends Phaser.Scene {
       if (this.gold < HIRE_COST) return
       this.gold -= HIRE_COST
       const job = Phaser.Utils.Array.GetRandom(JOB_LIST)
-      const rarity = pickWeighted(RARITY_LIST, (r) => r.hireWeight)
-      this.slots[slotIndex] = { uid: this.genId(), jobId: job.id, rarity: rarity.id, level: 1 }
-    } else {
+      const pool = RARITY_LIST.slice(0, this.maxUnlockedTier)
+      const rarity = pickWeighted(pool, (r) => r.hireWeight)
+      this.slots[slotIndex] = { uid: this.genId(), jobId: job.id, rarity: rarity.tier, level: 1 }
+    } else if (current.level < LEVEL_CAP) {
       const cost = upgradeCost(current.level)
       if (this.gold < cost) return
       this.gold -= cost
       current.level += 1
       this.lastUpgradeText = `${JOBS[current.jobId].name} Lv.${current.level}로 강화!`
+      this.upgradeSeq += 1
+    } else {
+      if (current.rarity >= MAX_RARITY) return
+      const partnerIndex = this.findMergePartner(slotIndex)
+      if (partnerIndex === -1) return
+      const nextTier = (current.rarity + 1) as Rarity
+      this.slots[partnerIndex] = null
+      const newJob = Phaser.Utils.Array.GetRandom(JOB_LIST)
+      this.slots[slotIndex] = { uid: this.genId(), jobId: newJob.id, rarity: nextTier, level: 1 }
+      if (nextTier > this.maxUnlockedTier) this.maxUnlockedTier = nextTier
+      this.lastUpgradeText = `⭐ ${RARITIES[nextTier].name} 등급 직원 획득! (랜뽑에도 등장)`
       this.upgradeSeq += 1
     }
 
@@ -255,6 +347,22 @@ export class MainScene extends Phaser.Scene {
       const rarity = RARITIES[emp.rarity]
       const stats = this.effectiveStats(emp, activeIds)
 
+      let hintText: string
+      let hintColor: string
+      if (emp.level < LEVEL_CAP) {
+        hintText = `🔧 ${upgradeCost(emp.level)}G`
+        hintColor = '#fbbf24'
+      } else if (emp.rarity >= MAX_RARITY) {
+        hintText = 'MAX'
+        hintColor = '#64748b'
+      } else if (this.findMergePartner(i) !== -1) {
+        hintText = '⭐ 합체 가능'
+        hintColor = '#facc15'
+      } else {
+        hintText = 'Lv.MAX'
+        hintColor = '#64748b'
+      }
+
       const container = this.add.container(pos.x, pos.y)
       const bg = this.add.rectangle(0, 0, 60, 60, job.color, 0.25)
       bg.setStrokeStyle(3, rarity.color)
@@ -263,10 +371,8 @@ export class MainScene extends Phaser.Scene {
       const atkTxt = this.add
         .text(0, 22, `ATK ${Math.round(stats.atk)}`, { fontSize: '9px', color: '#94a3b8' })
         .setOrigin(0.5)
-      const costTxt = this.add
-        .text(0, 40, `🔧 ${upgradeCost(emp.level)}G`, { fontSize: '9px', color: '#fbbf24' })
-        .setOrigin(0.5)
-      container.add([bg, icon, lvl, atkTxt, costTxt])
+      const hintTxt = this.add.text(0, 40, hintText, { fontSize: '9px', color: hintColor }).setOrigin(0.5)
+      container.add([bg, icon, lvl, atkTxt, hintTxt])
       container.setSize(60, 60)
       container.setInteractive({ useHandCursor: true })
       container.on('pointerdown', (_p: unknown, _lx: number, _ly: number, event: { stopPropagation: () => void }) => {
@@ -290,8 +396,9 @@ export class MainScene extends Phaser.Scene {
     const hp = Math.round(def.baseHp * waveHpMult(this.wave))
     const speed = def.baseSpeed * waveSpeedMult(this.wave)
     const radius = def.tag === 'tanky' ? 18 : 13
+    const start = PATH_POINTS[0]
 
-    const container = this.add.container(PATH_X, SPAWN_Y)
+    const container = this.add.container(start.x, start.y)
     const circle = this.add.circle(0, 0, radius, def.color)
     const hpBg = this.add.rectangle(0, -radius - 10, 28, 5, 0x111827)
     const hpFg = this.add.rectangle(0, -radius - 10, 28, 5, 0x22c55e)
@@ -303,7 +410,9 @@ export class MainScene extends Phaser.Scene {
       hp,
       maxHp: hp,
       speed,
-      y: SPAWN_Y,
+      traveled: 0,
+      x: start.x,
+      y: start.y,
       container,
       circle,
       hpFg,
@@ -333,10 +442,13 @@ export class MainScene extends Phaser.Scene {
     const dt = delta * this.speedMult
     this.playTimeMs += dt
 
-    // 웨이브/스폰 진행
+    // 웨이브/스폰 진행 — 첫 웨이브는 직원을 하나도 배치하기 전까진 시작하지 않는다.
+    const waitingForFirstHire = this.wave === 0 && this.slots.every((e) => e === null)
     if (this.waveIntermission) {
-      this.intermissionTimer -= dt
-      if (this.intermissionTimer <= 0) this.startWave()
+      if (!waitingForFirstHire) {
+        this.intermissionTimer -= dt
+        if (this.intermissionTimer <= 0) this.startWave()
+      }
     } else if (this.spawnQueue.length > 0) {
       this.spawnTimer -= dt
       if (this.spawnTimer <= 0) {
@@ -352,11 +464,15 @@ export class MainScene extends Phaser.Scene {
       this.refreshSlotLocks()
     }
 
-    // 적 이동 (위 → 아래)
+    // 적 이동 (ㄹ자 경로를 따라 진행도만큼 이동)
     for (const enemy of [...this.enemies]) {
-      enemy.y += (enemy.speed * dt) / 1000
-      enemy.container.y = enemy.y
-      if (enemy.y >= BASE_Y) {
+      enemy.traveled += (enemy.speed * dt) / 1000
+      const pos = pointAtDistance(enemy.traveled)
+      enemy.x = pos.x
+      enemy.y = pos.y
+      enemy.container.x = pos.x
+      enemy.container.y = pos.y
+      if (pos.arrived) {
         this.hp -= enemy.def.damage
         this.removeEnemy(enemy)
         if (this.hp <= 0) {
@@ -381,9 +497,9 @@ export class MainScene extends Phaser.Scene {
         let target: RuntimeEnemy | null = null
         let bestProgress = -Infinity
         for (const enemy of this.enemies) {
-          const dist = Phaser.Math.Distance.Between(pos.x, pos.y, PATH_X, enemy.y)
-          if (dist <= stats.range && enemy.y > bestProgress) {
-            bestProgress = enemy.y
+          const dist = Phaser.Math.Distance.Between(pos.x, pos.y, enemy.x, enemy.y)
+          if (dist <= stats.range && enemy.traveled > bestProgress) {
+            bestProgress = enemy.traveled
             target = enemy
           }
         }
@@ -409,6 +525,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   private emitState() {
+    const waitingForFirstHire = this.wave === 0 && this.slots.every((e) => e === null)
     const snapshot: GameSnapshot = {
       hp: this.hp,
       maxHp: START_HP,
@@ -423,6 +540,7 @@ export class MainScene extends Phaser.Scene {
       nextSlotUnlockWave: this.nextSlotUnlockWaveDisplay(),
       activeSynergyIds: this.activeSynergyIds(),
       waveIntermission: this.waveIntermission,
+      waitingForFirstHire,
       intermissionSecondsLeft: this.waveIntermission ? Math.max(0, Math.ceil(this.intermissionTimer / 1000)) : 0,
       playTimeSeconds: Math.floor(this.playTimeMs / 1000),
       upgradeSeq: this.upgradeSeq,

@@ -3,17 +3,18 @@ import { EventBus } from '../game/EventBus'
 interface Props {
   speed: 1 | 2 | 3
   waveIntermission: boolean
+  waitingForFirstHire: boolean
   gameOver: boolean
   onOpenInfo: () => void
 }
 
-export default function ControlBar({ speed, waveIntermission, gameOver, onOpenInfo }: Props) {
+export default function ControlBar({ speed, waveIntermission, waitingForFirstHire, gameOver, onOpenInfo }: Props) {
   return (
     <div className="flex w-full flex-col gap-1.5 border-t border-slate-800 bg-slate-900/60 px-2 py-1.5">
       <div className="grid grid-cols-2 gap-1.5">
         <button
           onClick={() => EventBus.emit('skip-intermission')}
-          disabled={gameOver || !waveIntermission}
+          disabled={gameOver || !waveIntermission || waitingForFirstHire}
           className="rounded-md bg-slate-700 px-2 py-1.5 text-xs font-semibold text-slate-100 transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
         >
           즉시 Wave

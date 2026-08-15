@@ -5,6 +5,7 @@ interface Props {
   wave: number
   score: number
   waveIntermission: boolean
+  waitingForFirstHire: boolean
   intermissionSecondsLeft: number
   playTimeSeconds: number
 }
@@ -22,6 +23,7 @@ export default function Hud({
   wave,
   score,
   waveIntermission,
+  waitingForFirstHire,
   intermissionSecondsLeft,
   playTimeSeconds,
 }: Props) {
@@ -46,7 +48,9 @@ export default function Hud({
       <div className="flex items-center justify-between text-slate-400">
         <span>
           Wave <span className="font-semibold text-emerald-300">{wave}</span>
-          {waveIntermission ? (
+          {waitingForFirstHire ? (
+            <span className="ml-1 text-sky-300">슬롯을 눌러 직원을 채용하세요</span>
+          ) : waveIntermission ? (
             <span className="ml-1 text-amber-300">{intermissionSecondsLeft}초 후 시작</span>
           ) : (
             <span className="ml-1 text-slate-500">전투 중</span>

@@ -1,6 +1,7 @@
 export type JobId = 'developer' | 'qa' | 'devops' | 'sales'
 
-export type Rarity = 'common' | 'rare' | 'epic'
+/** 1(Common) ~ 5(Legendary) 등급 티어. */
+export type Rarity = 1 | 2 | 3 | 4 | 5
 
 export interface JobDef {
   id: JobId
@@ -19,10 +20,8 @@ export interface JobDef {
   bonusGoldMult?: number
 }
 
-export const RARITY_ORDER: Rarity[] = ['common', 'rare', 'epic']
-
 export interface RarityDef {
-  id: Rarity
+  tier: Rarity
   name: string
   statMult: number
   hireWeight: number
@@ -74,6 +73,8 @@ export interface GameSnapshot {
   nextSlotUnlockWave: number | null
   activeSynergyIds: string[]
   waveIntermission: boolean
+  /** 첫 웨이브 시작 전, 직원을 하나도 배치하지 않아 대기 중인 상태 */
+  waitingForFirstHire: boolean
   intermissionSecondsLeft: number
   playTimeSeconds: number
   upgradeSeq: number

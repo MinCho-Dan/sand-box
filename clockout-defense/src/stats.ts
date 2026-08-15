@@ -15,8 +15,3 @@ export function baseAttackSpeed(emp: Employee): number {
   const levelMult = 1 + (emp.level - 1) * LEVEL_STAT_GROWTH
   return job.baseAttackSpeed * levelMult
 }
-
-/** 초당 데미지 근사치. 배치 전 카드 비교나 자동 배치 우선순위 계산에 쓴다. */
-export function basePower(emp: Employee): number {
-  return baseAttack(emp) * baseAttackSpeed(emp)
-}

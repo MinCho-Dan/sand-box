@@ -45,6 +45,7 @@ export default function App() {
             wave={snapshot.wave}
             score={snapshot.score}
             waveIntermission={snapshot.waveIntermission}
+            waitingForFirstHire={snapshot.waitingForFirstHire}
             intermissionSecondsLeft={snapshot.intermissionSecondsLeft}
             playTimeSeconds={snapshot.playTimeSeconds}
           />
@@ -66,6 +67,7 @@ export default function App() {
           <ControlBar
             speed={snapshot.speed}
             waveIntermission={snapshot.waveIntermission}
+            waitingForFirstHire={snapshot.waitingForFirstHire}
             gameOver={snapshot.gameOver}
             onOpenInfo={() => setJobInfoOpen(true)}
           />
