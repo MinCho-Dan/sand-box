@@ -24,26 +24,38 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: isekai-kimdaewon/package-lock.json
+          cache-dependency-path: |
+            isekai-kimdaewon/package-lock.json
+            clockout-defense/package-lock.json
 
-      - name: Install
+      - name: Install (isekai-kimdaewon)
         working-directory: isekai-kimdaewon
         run: npm ci
 
-      - name: Test
+      - name: Test (isekai-kimdaewon)
         working-directory: isekai-kimdaewon
         run: npm test
 
-      - name: Build
+      - name: Build (isekai-kimdaewon)
         working-directory: isekai-kimdaewon
+        run: npm run build
+
+      - name: Install (clockout-defense)
+        working-directory: clockout-defense
+        run: npm ci
+
+      - name: Build (clockout-defense)
+        working-directory: clockout-defense
         run: npm run build
 
       # 사이트 조립: 루트 랜딩 페이지 + 각 프로젝트 빌드 결과
       - name: Assemble site
         run: |
           mkdir -p _site/isekai-kimdaewon
+          mkdir -p _site/clockout-defense
           cp site/index.html _site/index.html
           cp -r isekai-kimdaewon/dist/* _site/isekai-kimdaewon/
+          cp -r clockout-defense/dist/* _site/clockout-defense/
 
       - uses: actions/upload-pages-artifact@v3
         with:

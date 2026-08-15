@@ -12,6 +12,7 @@
 | 프로젝트 | 경로 | 배포 주소 |
 |---|---|---|
 | 이세계전사 김대원 | `isekai-kimdaewon/` | `/sand-box/isekai-kimdaewon/` |
+| 퇴근까지 버텨라 | `clockout-defense/` | `/sand-box/clockout-defense/` |
 
 ## 시작하기 (새 기기)
 
@@ -24,6 +25,8 @@ npm run dev     # 개발 서버
 ```
 
 `npm run build` 는 `tsc --noEmit` 을 먼저 돌리므로 타입 오류가 있으면 빌드가 멈춥니다.
+
+`clockout-defense/` 는 `npm ci && npm run dev` 만 하면 됩니다(테스트 없음, `tsc -b && vite build` 로 빌드).
 
 ## 배포
 
@@ -209,6 +212,72 @@ npx vite-node scripts/balance.ts -- 20                                   # 20회
    타일은 아직 도형이다. `render/world.ts` 의 `drawItems` / `drawMap`.
 3. **프레임워크 재판단** — Phaser 전환은 보류. 캐릭터마다 애니메이션 상태가 여러 개
    필요해지면 그때 다시 본다. 지금 구조(문자열 도트 → 오프스크린 베이크)로도 충분하다.
+
+## 퇴근까지 버텨라
+
+직장인 컨셉 랜덤 타워 디펜스. React + TypeScript + Tailwind v4 + Phaser 3, Vite 빌드.
+**2026-08-15 기준 초기 프로토타입** — 기획서(랭킹/퀘스트/도감/업적/스토리모드/보스 등)의
+극히 일부만 구현된 상태다. 지금 있는 것: 직무 4종(개발자·QA·DevOps·영업), 등급 3단계
+(Common/Rare/Epic), 랜덤 채용, 슬롯 배치, 동일 직무·등급·레벨 2개 병합 승진(일괄 승진),
+직무 시너지 2개 + 부서 시너지 1개(전역 조건부 배율, 오라 아님), 적 3종, 상한 없는 무한
+웨이브. **없는 것**: 스토리 모드, 보스, 랭킹(Supabase), 퀘스트, 도감, 업적, 이벤트,
+사운드, 스프라이트(전부 도형+이모지).
+
+### 구조
+
+```
+src/
+  types.ts        공용 타입 (Employee, EnemyDef, SynergyDef, GameSnapshot 등)
+  data/           employees · enemies · synergies (순수 데이터)
+  game/
+    EventBus.ts   React ↔ Phaser 통신 전용 Phaser.Events.EventEmitter 싱글턴
+    MainScene.ts  게임 상태의 단일 소스. 웨이브·전투·배치·병합·시너지 계산이 전부 여기 있다
+    PhaserGame.tsx  Phaser.Game 을 마운트하는 React 래퍼
+  ui/             Hud · ControlBar · InventoryPanel · SynergyPanel · GameOverOverlay
+  App.tsx         EventBus 'state-update' 구독 → 스냅샷을 각 UI 컴포넌트에 전달
+```
+
+React 는 `MainScene`이 주기적으로(150ms 간격 + 주요 액션 직후) emit 하는 `GameSnapshot`
+을 구독만 한다. 액션(채용/선택/일괄승진/배속/즉시웨이브/재시작)은 전부 `EventBus.emit(...)`
+으로 씬에 보낸다. **상태를 React 쪽에 별도로 들고 있지 않는다** — 필드 배치, 골드, 웨이브
+전부 `MainScene` 인스턴스 필드가 유일한 원본이다.
+
+### 반드시 알아야 할 결정
+
+**Phaser 캔버스는 마운트 직후 크기가 0일 수 있다.** `PhaserGame.tsx` 의 컨테이너는 Tailwind
+`aspect-[5/3]` 로 높이를 잡는데, `new Phaser.Game()` 생성 시점에 이 CSS 레이아웃이 아직
+반영 전이면 Phaser 가 부모 크기를 0x0 으로 읽어 캔버스를 그 크기로 굳혀버리고, 이후
+윈도우 리사이즈가 없으면 영영 0x0 으로 남는다(실제로 겪은 버그 — HUD 는 정상인데 필드만
+안 보였다). `ResizeObserver` 로 컨테이너를 관찰하다가 `game.scale.refresh()` 를 부르는
+방식으로 고쳤다. 컨테이너 크기 결정 방식을 바꿀 때는 이 타이밍 문제를 다시 확인할 것.
+
+**시너지는 오라가 아니라 전역 조건부 배율이다.** 배치된 직원들의 직무 집합이
+`SynergyDef.requiredJobs` 를 전부 포함하면, `appliesTo` 에 속한 직무의 공격력/공격속도에
+곱연산으로 적용된다(거리 기반 아님). 직무 시너지와 부서 시너지가 동시에 만족되면 곱이
+누적된다(예: 개발자는 품질보증 1.3 × 개발팀 1.2). 기획서의 오라형 버프(DevOps 가 주변을
+강화하는 식)는 프로토타입 범위에서 의도적으로 뺐다 — 거리 계산 없이도 "조합을 완성하면
+강해진다"는 핵심 재미는 전달된다고 판단했다.
+
+**적 처치 우선순위는 "경로 진행도가 가장 큰(=회사에 가장 가까운) 적"이다**
+(`MainScene.update()` 의 `bestX` 비교). 사거리 안의 모든 적 중 x 좌표가 가장 큰 것을
+공격한다 — 여러 적이 동시에 들어와도 회사에 먼저 닿을 적부터 처리되게 하려는 의도.
+
+### 개발 도구
+
+이 저장소의 Browser 미리보기 세션은 `document.visibilityState === 'hidden'` 인 채로 rAF 가
+전혀 안 돌 때가 있다(패널이 실제로 화면에 표시되지 않은 상태). 그럴 때는 `npm run dev` 로
+띄운 뒤 콘솔에서 `window.__game`(dev 빌드에서만 존재, `PhaserGame.tsx` 에서 주입, prod
+빌드에서는 트리쉐이킹으로 사라짐)으로 씬을 붙잡아 `scene.update(time, delta)` 를 직접
+반복 호출해 웨이브/전투 로직을 검증할 수 있다. `scene.employees`, `scene.hireRandomEmployee()`,
+`scene.mergeOnce()`, `scene.effectiveStats(emp, activeIds)` 도 런타임에서 바로 호출 가능하다
+(TS `private` 는 컴파일 타임 전용이라 런타임엔 그냥 열려 있다).
+
+### 남은 일
+
+기획서(`README.md` 없음, 최초 요청 메시지 참고) 대비 스토리모드·보스·랭킹·퀘스트·도감·업적·
+이벤트·사운드·스프라이트가 전부 비어 있다. 다음으로 붙일 만한 것 우선순위: ① 보스 1종 +
+승리 조건이 있는 짧은 스토리 모드, ② 도트/이모지를 실제 스프라이트로, ③ Supabase 무한모드
+랭킹(이세계전사 김대원의 `systems/ranking.ts` 패턴 재사용 가능).
 
 ## 환경 메모 (Windows)
 
