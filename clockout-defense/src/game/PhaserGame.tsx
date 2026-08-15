@@ -35,5 +35,5 @@ export default function PhaserGame() {
     }
   }, [])
 
-  return <div ref={containerRef} className="mx-auto aspect-[5/3] w-full max-w-3xl" />
+  return <div ref={containerRef} className="h-full w-full" />
 }

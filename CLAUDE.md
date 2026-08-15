@@ -218,59 +218,116 @@ npx vite-node scripts/balance.ts -- 20                                   # 20회
 직장인 컨셉 랜덤 타워 디펜스. React + TypeScript + Tailwind v4 + Phaser 3, Vite 빌드.
 **2026-08-15 기준 초기 프로토타입** — 기획서(랭킹/퀘스트/도감/업적/스토리모드/보스 등)의
 극히 일부만 구현된 상태다. 지금 있는 것: 직무 4종(개발자·QA·DevOps·영업), 등급 3단계
-(Common/Rare/Epic), 랜덤 채용, 슬롯 배치, 동일 직무·등급·레벨 2개 병합 승진(일괄 승진),
-직무 시너지 2개 + 부서 시너지 1개(전역 조건부 배율, 오라 아님), 적 3종, 상한 없는 무한
-웨이브. **없는 것**: 스토리 모드, 보스, 랭킹(Supabase), 퀘스트, 도감, 업적, 이벤트,
-사운드, 스프라이트(전부 도형+이모지).
+(Common/Rare/Epic), 랜덤 채용(채용 즉시 동일 직무·등급·레벨 자동 합체 승진), 슬롯 8개
+(6개는 시작부터, 2개는 Wave 6·11에 해금), "최적 배치" 자동 배치, 직무 시너지 2개 + 부서
+시너지 1개(전역 조건부 배율, 오라 아님), 적 3종, 상한 없는 무한 웨이브, 세로형 고정 뷰포트
+UI(스크롤 없음), 직무 안내·시너지 상세 팝업. **없는 것**: 스토리 모드, 보스, 랭킹
+(Supabase), 퀘스트, 도감, 업적, 이벤트, 사운드, 스프라이트(전부 도형+이모지).
 
 ### 구조
 
 ```
 src/
   types.ts        공용 타입 (Employee, EnemyDef, SynergyDef, GameSnapshot 등)
+  stats.ts         등급·레벨만 반영한 기본 공격력/공격속도/DPS 계산 (React·Phaser 공용)
   data/           employees · enemies · synergies (순수 데이터)
   game/
     EventBus.ts   React ↔ Phaser 통신 전용 Phaser.Events.EventEmitter 싱글턴
-    MainScene.ts  게임 상태의 단일 소스. 웨이브·전투·배치·병합·시너지 계산이 전부 여기 있다
+    MainScene.ts  게임 상태의 단일 소스. 웨이브·전투·배치·합체·시너지 계산이 전부 여기 있다
     PhaserGame.tsx  Phaser.Game 을 마운트하는 React 래퍼
-  ui/             Hud · ControlBar · InventoryPanel · SynergyPanel · GameOverOverlay
-  App.tsx         EventBus 'state-update' 구독 → 스냅샷을 각 UI 컴포넌트에 전달
+  ui/             Hud · ControlBar · InventoryPanel · SynergyPanel · GameOverOverlay ·
+                  Modal(공용) · JobInfoModal
+  App.tsx         EventBus 'state-update' 구독 → 스냅샷을 각 UI 컴포넌트에 전달, 모달 상태 보유
 ```
 
 React 는 `MainScene`이 주기적으로(150ms 간격 + 주요 액션 직후) emit 하는 `GameSnapshot`
-을 구독만 한다. 액션(채용/선택/일괄승진/배속/즉시웨이브/재시작)은 전부 `EventBus.emit(...)`
+을 구독만 한다. 액션(채용/선택/최적배치/배속/즉시웨이브/재시작)은 전부 `EventBus.emit(...)`
 으로 씬에 보낸다. **상태를 React 쪽에 별도로 들고 있지 않는다** — 필드 배치, 골드, 웨이브
-전부 `MainScene` 인스턴스 필드가 유일한 원본이다.
+전부 `MainScene` 인스턴스 필드가 유일한 원본이다. 모달 열림 상태(직무 안내/시너지 상세)만
+예외적으로 `App.tsx` 의 로컬 React state 다 — 게임 로직과 무관한 순수 UI 상태라서.
 
 ### 반드시 알아야 할 결정
 
-**Phaser 캔버스는 마운트 직후 크기가 0일 수 있다.** `PhaserGame.tsx` 의 컨테이너는 Tailwind
-`aspect-[5/3]` 로 높이를 잡는데, `new Phaser.Game()` 생성 시점에 이 CSS 레이아웃이 아직
-반영 전이면 Phaser 가 부모 크기를 0x0 으로 읽어 캔버스를 그 크기로 굳혀버리고, 이후
-윈도우 리사이즈가 없으면 영영 0x0 으로 남는다(실제로 겪은 버그 — HUD 는 정상인데 필드만
-안 보였다). `ResizeObserver` 로 컨테이너를 관찰하다가 `game.scale.refresh()` 를 부르는
-방식으로 고쳤다. 컨테이너 크기 결정 방식을 바꿀 때는 이 타이밍 문제를 다시 확인할 것.
+**필드는 세로형(450×800)이고 위→아래로 적이 내려온다.** `PATH_X`(고정 x) / `SPAWN_Y`
+(-20) / `BASE_Y`(720) 축으로 움직인다. 원래는 가로형 레인이었는데, 참고 이미지(모바일
+UI 목업)를 보고 세로형으로 통째로 축을 바꿨다 — 좌표를 다시 가로로 되돌릴 땐 `MainScene`
+전체의 `x`/`y` 축 사용처를 다시 점검해야 한다(적 이동, 타겟팅 거리 계산, 슬롯 좌표 전부).
+
+**화면 전체가 `h-dvh` 고정이고 페이지 스크롤이 없다.** `App.tsx` 최상위 div 가
+`h-dvh overflow-hidden flex flex-col` 이고, 상단 Hud/시너지 스트립은 고정 높이, 중앙
+Phaser 필드는 `flex-1 min-h-0`, 하단 컨트롤+인벤토리는 고정 높이다. **인벤토리가
+세로로 안 쌓이고 가로 스크롤 띠인 것도 이 제약 때문** — 직원이 아무리 많아도 화면 높이가
+안 늘어나야 한다. `PhaserGame.tsx` 의 컨테이너는 더 이상 `aspect-[9/16]` 로 고정하지
+않고 `h-full w-full` 로 부모(flex-1) 를 그냥 채운다 — Phaser 의 `Scale.FIT` 이 그 박스
+안에서 알아서 레터박스/필러박스 처리한다.
+
+**Phaser 캔버스는 마운트 직후 크기가 0일 수 있다.** 부모가 `flex-1` 로 크기를 늦게
+확정하는 구조라서, `new Phaser.Game()` 생성 시점에 아직 레이아웃이 안 잡혀 있으면
+Phaser 가 부모 크기를 0x0 으로 읽어 캔버스를 그 크기로 굳혀버리고, 이후 리사이즈가 없으면
+영영 0x0 으로 남는다(실제로 겪은 버그). `ResizeObserver` 로 컨테이너를 관찰하다가
+`game.scale.refresh()` 를 부르는 방식으로 고쳤다. 컨테이너 크기 결정 방식을 바꿀 때는
+이 타이밍 문제를 다시 확인할 것.
+
+**채용은 즉시 자동 합체된다 — 별도 "일괄 승진" 버튼이 없다.** `hireRandomEmployee()`
+안에서 채용 직후 곧바로 `mergeOnce()` 캐스케이드를 돌린다(동일 직무·등급·레벨 2명 →
+레벨+1). 대기 명단이 무한히 쌓이는 걸 막고 "합치면 상위 유닛" 이라는 흔한 랜타디 관례를
+따르려는 의도(사용자 피드백으로 바뀜 — 원래는 수동 "일괄 승진" 버튼이었다). 합쳐진
+직원이 이미 필드에 배치돼 있었다면 슬롯 표시(레벨·ATK)도 같이 갱신해야 해서, 합체가
+있었을 때만 `redrawAllSlots()` 를 추가로 부른다.
 
 **시너지는 오라가 아니라 전역 조건부 배율이다.** 배치된 직원들의 직무 집합이
 `SynergyDef.requiredJobs` 를 전부 포함하면, `appliesTo` 에 속한 직무의 공격력/공격속도에
 곱연산으로 적용된다(거리 기반 아님). 직무 시너지와 부서 시너지가 동시에 만족되면 곱이
-누적된다(예: 개발자는 품질보증 1.3 × 개발팀 1.2). 기획서의 오라형 버프(DevOps 가 주변을
-강화하는 식)는 프로토타입 범위에서 의도적으로 뺐다 — 거리 계산 없이도 "조합을 완성하면
-강해진다"는 핵심 재미는 전달된다고 판단했다.
+누적된다(예: 개발자는 칼퇴 근절 1.3 × 야근 마스터 1.2). 시너지 이름(칼퇴 근절/커피 중독/
+야근 마스터)은 AI 로 만든 참고 목업의 톤을 따라 재미있게 지은 것 — 기획서 원문의 "품질
+보증"/"지속 배포"/"개발팀" 에서 이름만 바꿨고 발동 조건·수치는 그대로다.
 
 **적 처치 우선순위는 "경로 진행도가 가장 큰(=회사에 가장 가까운) 적"이다**
-(`MainScene.update()` 의 `bestX` 비교). 사거리 안의 모든 적 중 x 좌표가 가장 큰 것을
-공격한다 — 여러 적이 동시에 들어와도 회사에 먼저 닿을 적부터 처리되게 하려는 의도.
+(`MainScene.update()` 의 `bestProgress` 비교). 사거리 안의 모든 적 중 y 좌표가 가장 큰
+것을 공격한다 — 여러 적이 동시에 들어와도 회사에 먼저 닿을 적부터 처리되게 하려는 의도.
+
+**슬롯은 8개인데 2개는 웨이브로 해금된다.** `SLOT_UNLOCK_WAVE = [0,0,0,5,0,0,0,10]` —
+인덱스 3·7 슬롯은 내부 웨이브 번호(0-index) 5·10 이상일 때만 클릭 가능해진다. 잠긴
+슬롯은 Phaser 캔버스 위에 🔒 아이콘 + "Wave N" 텍스트로 직접 표시한다(별도 React
+텍스트 없음 — 캔버스 자체가 이미 알려주므로 중복 표기 안 함). 슬롯 개수/배치를 바꿀 땐
+`onSlotClick`/`redrawSlotHighlights`/`autoArrange` 세 곳 모두 `isSlotUnlocked` 를
+거치는지 확인할 것.
+
+**"최적 배치"는 개발자를 우선 확보해 시너지를 최대한 발동시킨다.** 개발자가 있으면
+QA·DevOps 도 있는 대로 끌어와 배치하고(직무 시너지 3개 동시 발동 노림), 남는 슬롯은
+`basePower()`(공격력×공격속도, 시너지 미반영 원시 수치) 순으로 채운다. 전체 재배치라서
+호출하면 기존 배치를 다 지우고 다시 짠다.
 
 ### 개발 도구
 
-이 저장소의 Browser 미리보기 세션은 `document.visibilityState === 'hidden'` 인 채로 rAF 가
-전혀 안 돌 때가 있다(패널이 실제로 화면에 표시되지 않은 상태). 그럴 때는 `npm run dev` 로
-띄운 뒤 콘솔에서 `window.__game`(dev 빌드에서만 존재, `PhaserGame.tsx` 에서 주입, prod
-빌드에서는 트리쉐이킹으로 사라짐)으로 씬을 붙잡아 `scene.update(time, delta)` 를 직접
-반복 호출해 웨이브/전투 로직을 검증할 수 있다. `scene.employees`, `scene.hireRandomEmployee()`,
-`scene.mergeOnce()`, `scene.effectiveStats(emp, activeIds)` 도 런타임에서 바로 호출 가능하다
-(TS `private` 는 컴파일 타임 전용이라 런타임엔 그냥 열려 있다).
+`import.meta.env.DEV` 일 때만 `PhaserGame.tsx` 가 `window.__game` 에 Phaser 게임
+인스턴스를 심는다(prod 빌드에서는 트리쉐이킹으로 사라짐 — `dist` 산출물에 문자열이
+안 남는 것까지 확인했다). Browser 미리보기 패널이 실제로 화면에 표시되지 않으면
+`document.visibilityState === 'hidden'` 상태로 rAF 가 전혀 안 도는 경우가 있는데, 그럴 땐
+`window.__game.scene.getScene('main')` 으로 씬을 붙잡아 `scene.update(time, delta)` 를
+직접 반복 호출해 웨이브/전투 로직을 검증한다. `scene.employees`,
+`scene.hireRandomEmployee()`, `scene.mergeOnce()`, `scene.autoArrange()`,
+`scene.effectiveStats(emp, activeIds)` 도 런타임에서 바로 호출 가능하다(TS `private` 는
+컴파일 타임 전용이라 런타임엔 그냥 열려 있다).
+
+**`npm run dev`(React StrictMode) 콘솔에 `Cannot read properties of null (reading 'add')`
+에러가 찍히는 걸 발견했다 — 무시해도 된다.** `vite preview`(prod 빌드) 로 확인하면 이
+에러가 아예 없다. StrictMode 의 mount→cleanup→mount 이중 호출이 Phaser 의 캔버스
+DOM 조작(React 관리 밖에서 직접 append/remove)과 부딪혀 나는 개발 모드 전용 잡음으로
+보인다 — `window.onerror`/`unhandledrejection`/`console.error` 오버라이드로도 못 잡히는
+걸로 봐서 React 내부 recoverable-error 경로로 추정된다. 실제 게임 상태는 매번 정상이었고
+(캔버스 1개, 정상 렌더) prod 빌드엔 안 나타나므로 사용자에게 영향 없다. 이 에러가 실제
+버그처럼 보이는 다른 증상(예: 상태가 널뛰거나 캔버스가 2개 남는 것)과 동반되면 그때
+다시 파봐야겠지만, 지금까진 그런 적 없었다.
+
+**Browser 미리보기 패널에서 `computer` 툴의 좌표 클릭이 안 먹힐 때가 있다** (스크린샷
+크기와 실제 뷰포트 크기가 다른 비율로 보고되는 세션에서 겪음). 그럴 땐 `javascript_tool`
+로 `Array.from(document.querySelectorAll('button')).find(...).click()` 처럼 실제 DOM
+엘리먼트를 찾아 `.click()` 을 직접 호출하는 게 더 안정적이다 — 진짜 클릭 이벤트가
+발생하므로 앱 입장에서는 사용자 클릭과 동일하다. 단, 같은 스크립트 안에서 여러 번
+연속 클릭하면 React 리렌더가 아직 안 반영된 stale DOM(예: 방금 비활성화됐어야 할 버튼)
+을 대상으로 클릭하게 될 수 있다 — 액션과 검증은 별도의 tool 호출로 나눠서 그 사이에
+이벤트 루프가 한 번 돌게 해야 한다.
 
 ### 남은 일
 

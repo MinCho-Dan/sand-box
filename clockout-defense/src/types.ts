@@ -70,7 +70,13 @@ export interface GameSnapshot {
   gameOver: boolean
   employees: Employee[]
   slotCount: number
+  unlockedSlotCount: number
+  nextSlotUnlockWave: number | null
   activeSynergyIds: string[]
   waveIntermission: boolean
+  intermissionSecondsLeft: number
+  playTimeSeconds: number
   selectedUid: string | null
+  promotionSeq: number
+  lastPromotionText: string
 }
