@@ -53,6 +53,8 @@ export interface Enemy extends Body {
   windT: number;
   rushT: number;
   aim: number;
+  /** 무한모드에서 파도마다 오르는 피해 배율. 미설정(스토리 모드)이면 1로 취급한다 */
+  dmgMult?: number;
 }
 
 export interface Bullet extends Body {

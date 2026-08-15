@@ -192,10 +192,13 @@ export function beginChapter(): void {
       state.items.push({ x: s.x, y: s.y, r: 12, type: "tool", tool: "saw" as ToolId, t: 0 });
     }
   } else {
-    // 무한모드는 파도가 오를수록 개체 자체도 더 단단하고 빠르게 만든다 — 상한 없이 계속 오른다.
-    // 언젠가는 죽는 게 무한모드의 요점이라, 인위적인 천장을 두지 않는다.
+    // 무한모드는 파도가 오를수록 개체 자체도 더 단단하고 빠르고 세게 때리게 만든다 —
+    // 상한 없이 계속 오른다. 체력만 올리면 딜은 그대로인데 받는 피해는 안 느니
+    // 업그레이드로 체력을 충분히 쌓은 뒤로는 사실상 안 죽는 문제가 있었다.
+    // 언젠가는 죽는 게 무한모드의 요점이라, 세 축(체력·속도·피해) 다 인위적인 천장을 두지 않는다.
     const hpMult = state.mode === "endless" ? 1 + i * 0.05 : 1;
     const spdMult = state.mode === "endless" ? 1 + i * 0.02 : 1;
+    const dmgMult = state.mode === "endless" ? 1 + i * 0.03 : 1;
     for (const [type, n] of Object.entries(ch.spawn ?? {})) {
       for (let k = 0; k < (n as number); k++) {
         const t = take();
@@ -205,6 +208,7 @@ export function beginChapter(): void {
           e.maxhp = e.hp;
         }
         e.spd *= spdMult;
+        if (dmgMult !== 1) e.dmgMult = dmgMult;
         state.enemies.push(e);
       }
     }

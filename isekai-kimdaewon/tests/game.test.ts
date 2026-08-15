@@ -680,6 +680,36 @@ describe("무한모드", () => {
     expect(state.enemies[0].maxhp).toBeGreaterThan(hpAt25);
   });
 
+  it("파도가 오를수록 피해량도 오른다 (체력만 쌓아서 안 죽던 문제의 회귀 방지)", () => {
+    startEndless();
+    const p = state.player;
+    p.inv = 0; // 스폰 직후 무적 시간을 없애야 접촉 피해가 바로 들어간다
+
+    const e0 = state.enemies[0];
+    const d = ENEMY_DEF[e0.type];
+    expect(e0.dmgMult ?? 1).toBe(1); // 1라운드(웨이브 0)는 배율 1
+    p.hp = 9999;
+    p.x = e0.x;
+    p.y = e0.y;
+    e0.touch = 0;
+    update(1 / 60);
+    const lostEarly = 9999 - p.hp;
+    expect(lostEarly).toBeCloseTo(d.dmg, 5);
+
+    state.pendingChapter = 30;
+    beginChapter();
+    const e1 = state.enemies[0];
+    expect(e1.dmgMult).toBeGreaterThan(1);
+    p.inv = 0;
+    p.hp = 9999;
+    p.x = e1.x;
+    p.y = e1.y;
+    e1.touch = 0;
+    update(1 / 60);
+    const lostLate = 9999 - p.hp;
+    expect(lostLate).toBeGreaterThan(lostEarly);
+  });
+
   it("보스전 종료 후에도 스토리 모드는 CHAPTERS 를 그대로 쓴다 (회귀)", () => {
     startChapter(2);
     expect(state.mode).toBe("story");

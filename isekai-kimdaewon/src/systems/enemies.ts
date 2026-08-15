@@ -70,9 +70,10 @@ export function updateEnemies(dt: number): void {
           } else {
             const n = hpR < 0.5 ? 13 : 10;
             const off = rnd(0, Math.PI * 2);
+            const bulletDmg = 11 * (e.dmgMult ?? 1);
             for (let k = 0; k < n; k++) {
               const a = off + (k / n) * Math.PI * 2;
-              state.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 150, vy: Math.sin(a) * 150, r: 6, dmg: 11, life: 5 });
+              state.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 150, vy: Math.sin(a) * 150, r: 6, dmg: bulletDmg, life: 5 });
             }
             state.shake = 8;
             e.cd = hpR < 0.5 ? 1.7 : 2.3;
@@ -88,7 +89,10 @@ export function updateEnemies(dt: number): void {
         e.cd = 2.6;
         for (let k = -1; k <= 1; k++) {
           const a = toP + k * 0.15;
-          state.bullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 170, vy: Math.sin(a) * 170, r: 5, dmg: d.dmg, life: 4 });
+          state.bullets.push({
+            x: e.x, y: e.y, vx: Math.cos(a) * 170, vy: Math.sin(a) * 170, r: 5,
+            dmg: d.dmg * (e.dmgMult ?? 1), life: 4,
+          });
         }
       }
     } else if (d.charge) {
@@ -132,7 +136,7 @@ export function updateEnemies(dt: number): void {
     // 접촉 피해
     if (dp < p.r + e.r && e.touch <= 0) {
       e.touch = 0.7;
-      hurtPlayer(d.dmg);
+      hurtPlayer(d.dmg * (e.dmgMult ?? 1));
       const kb = Math.atan2(p.y - e.y, p.x - e.x);
       moveEnt(p, Math.cos(kb) * 18, Math.sin(kb) * 18, g);
     }

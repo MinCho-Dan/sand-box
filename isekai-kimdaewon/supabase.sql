@@ -15,22 +15,45 @@ create table if not exists public.scores (
   run_time   real        not null,
   created_at timestamptz not null default now(),
 
-  constraint nick_len    check (char_length(btrim(nick)) between 1 and 12),
-  constraint score_range check (score >= 0 and score <= 100000),
-  constraint kills_range check (kills >= 0 and kills <= 2000),
-  constraint time_range  check (run_time >= 5 and run_time <= 7200)
+  -- score/kills/stage/run_time 상한은 모드마다 달라서(무한모드는 사실상 상한이 없다)
+  -- 아래 alter table 블록에서 mode 컬럼과 함께 조건부로 정의한다.
+  constraint nick_len check (char_length(btrim(nick)) between 1 and 12)
 );
 
 -- ── 스토리 모드 / 무한모드 분리 ────────────────────────────────────
--- 무한모드는 stage 컬럼에 "몇 라운드까지 갔는지"가 들어가고 상한이 없어서
--- (밸런스 상 사실상 있으나 다름없지만) stage_range 를 넉넉하게 다시 잡는다.
+-- 무한모드는 stage(라운드)·score·kills·run_time 모두 사실상 상한이 없어서
+-- 원래 스토리 모드 기준으로 잡아둔 상한 검사에 그대로 걸린다.
+-- (실제로 무한모드 648,110점 / 5,478킬 등록이 score_range·kills_range 에 막혀
+--  실패한 적이 있다 — 그때 stage_range 만 고치고 이 둘을 빠뜨린 것.)
+-- 모드별로 다른 상한을 검사하도록 전부 mode 기준 조건부로 바꾼다.
 alter table public.scores add column if not exists mode text not null default 'story';
 
 alter table public.scores drop constraint if exists mode_range;
 alter table public.scores add constraint mode_range check (mode in ('story', 'endless'));
 
 alter table public.scores drop constraint if exists stage_range;
-alter table public.scores add constraint stage_range check (stage between 1 and 100000);
+alter table public.scores add constraint stage_range check (
+  (mode = 'story'   and stage between 1 and 8) or
+  (mode = 'endless' and stage between 1 and 100000)
+);
+
+alter table public.scores drop constraint if exists score_range;
+alter table public.scores add constraint score_range check (
+  (mode = 'story'   and score between 0 and 100000) or
+  (mode = 'endless' and score between 0 and 50000000)
+);
+
+alter table public.scores drop constraint if exists kills_range;
+alter table public.scores add constraint kills_range check (
+  (mode = 'story'   and kills between 0 and 2000) or
+  (mode = 'endless' and kills between 0 and 500000)
+);
+
+alter table public.scores drop constraint if exists time_range;
+alter table public.scores add constraint time_range check (
+  (mode = 'story'   and run_time between 5 and 7200) or
+  (mode = 'endless' and run_time between 5 and 43200)
+);
 
 -- ── 닉네임당 최고 기록 1건만 유지 (모드별로 따로) ──────────────────
 -- 이미 쌓인 중복이 있다면 먼저 정리한다 (최고점, 동점이면 먼저 올린 것만 남김)
